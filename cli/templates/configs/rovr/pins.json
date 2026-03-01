@@ -1,0 +1,22 @@
+{
+    "default": [
+        {
+            "name": "Home",
+            "path": "$HOME"
+        }
+    ],
+    "pins": [
+        {
+            "name": ".config",
+            "path": "$HOME/.config"
+        },
+        {
+            "name": "project",
+            "path": "/project"
+        },
+        {
+            "name": "tmp",
+            "path": "/tmp"
+        }
+    ]
+}

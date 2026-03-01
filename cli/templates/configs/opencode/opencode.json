@@ -1,0 +1,24 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "code-reviewer": {
+      "description": "Reviews code for best practices and potential issues",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "You are a code reviewer. Focus on security, performance, and maintainability.",
+      "tools": {
+        "write": false,
+        "edit": false
+      }
+    }
+  },
+  "plugin": [
+    "opencode-antigravity-auth@latest",
+    "oh-my-opencode@3.0.0-beta.10",
+    "octto@latest",
+    "@knikolov/opencode-plugin-simple-memory@latest"
+  ],
+  "tools": {
+    "webfetch": true,
+    "question": true
+  }
+}
