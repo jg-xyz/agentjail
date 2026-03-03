@@ -1,0 +1,159 @@
+# ============================================================
+#  AgentJail — Configuration Schema
+#  Default location: ~/.config/agentjail/config.yaml
+#
+#  Generate a clean starter config with:
+#    agentjail --config
+# ============================================================
+
+
+# --------------------------------------------------------------
+# default_editor
+#   The editor binary to make available as the "edit" alias
+#   inside the container, and to set the $EDITOR environment
+#   variable.
+#
+#   Common values: micro | vim | nano
+#   Default: micro
+# --------------------------------------------------------------
+default_editor: micro
+
+
+# --------------------------------------------------------------
+# default_shell
+#   The shell to use inside the container.
+#   This controls both the interactive shell and the $SHELL
+#   environment variable.
+#
+#   Supported values: zsh | bash
+#   Default: zsh
+# --------------------------------------------------------------
+default_shell: zsh
+
+
+# --------------------------------------------------------------
+# mount_system_gitconfig
+#   When true, mounts ~/.gitconfig from the host into the
+#   container at /root/.gitconfig so git identity and settings
+#   are available without reconfiguration.
+#
+#   Values: true | false
+#   Default: true
+# --------------------------------------------------------------
+mount_system_gitconfig: true
+
+
+# --------------------------------------------------------------
+# mount_gh_config
+#   When true, mounts ~/.config/gh from the host into the
+#   container. This is the primary authentication store for the
+#   gh CLI and the GitHub Copilot extension.
+#
+#   Values: true | false
+#   Default: true
+# --------------------------------------------------------------
+mount_gh_config: true
+
+
+# --------------------------------------------------------------
+# github_token
+#   A GitHub personal access token (classic or fine-grained)
+#   to inject as GH_TOKEN into the container.
+#   Useful when gh CLI config is not mounted.
+#
+#   Falls back (in order) to:
+#     1. This field
+#     2. GH_TOKEN on the host
+#     3. GITHUB_TOKEN on the host
+#
+#   Leave empty to rely on the fallback chain.
+#   Default: "" (empty — use fallback)
+# --------------------------------------------------------------
+github_token: ""
+
+
+# --------------------------------------------------------------
+# preferred_agent
+#   The agent to launch automatically when the -A flag is used.
+#   Must match the key of an enabled entry under agent_frameworks.
+#
+#   Available values: copilot | opencode
+#   Leave empty to be prompted interactively when using -A.
+#   Default: "" (empty — prompt on -A)
+# --------------------------------------------------------------
+preferred_agent: ""
+
+
+# ============================================================
+#  agent_frameworks
+#  Controls which AI agent CLIs are installed in the container
+#  image and made available at runtime.
+#  Changes to enabled flags require rebuilding the image
+#  (agentjail --build).
+# ============================================================
+agent_frameworks:
+
+  # ------------------------------------------------------------
+  # agent_frameworks.opencode
+  #   OpenCode — open-source terminal AI coding agent.
+  #   Homepage: https://opencode.ai
+  #
+  #   enabled
+  #     Install opencode in the container image and mount its
+  #     config/auth directories.
+  #     Values: true | false
+  #     Default: false
+  #
+  #   plugins
+  #     List of OpenCode plugin names to enable.
+  #     Default: [] (none)
+  # ------------------------------------------------------------
+  opencode:
+    enabled: false
+    plugins: []
+
+  # ------------------------------------------------------------
+  # agent_frameworks.copilot
+  #   GitHub Copilot CLI — AI agent via the gh copilot extension.
+  #   Homepage: https://githubnext.com/projects/copilot-cli
+  #
+  #   enabled
+  #     Install the gh copilot extension in the container image
+  #     and mount Copilot credential directories.
+  #     Values: true | false
+  #     Default: true
+  #
+  #   plugins
+  #     Reserved for future use.
+  #     Default: [] (none)
+  # ------------------------------------------------------------
+  copilot:
+    enabled: true
+    plugins: []
+
+
+# ============================================================
+#  container_env_vars
+#  A map of environment variables to inject into the container
+#  at startup via docker run -e.
+#
+#  Two value schemas are supported:
+#
+#    CONT_VAR: literal_value
+#      Sets CONT_VAR to the literal string "literal_value".
+#
+#    CONT_VAR: env:HOST_VAR
+#      Reads HOST_VAR from the host environment at launch time
+#      and sets CONT_VAR to that value inside the container.
+#      If HOST_VAR is not set on the host, CONT_VAR will be
+#      an empty string.
+#
+#  Default: {} (no extra environment variables)
+# ============================================================
+container_env_vars: {}
+
+# Examples:
+#   ANTHROPIC_API_KEY: env:ANTHROPIC_API_KEY   # forward a host API key
+#   OPENAI_API_KEY: env:OPENAI_API_KEY         # forward a host API key
+#   MY_TEAM: acme                              # inject a literal value
+#   DEBUG: "false"                             # inject a literal value

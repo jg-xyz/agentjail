@@ -1,4 +1,5 @@
 [tools]
+bat = "latest"
 go = "1.25.3"
 
 [tasks.build]

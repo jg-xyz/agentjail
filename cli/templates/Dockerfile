@@ -15,6 +15,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
+    gh \
     git \
     jq \
     micro \
@@ -48,13 +49,12 @@ RUN mise use -g \
     eza \
     fd \
     fzf \
-    github-cli \
     node \
     ripgrep \
     television \
     yq \
-    pipx:rovr \
-    pipx:rich-cli 
+    pipx:rich-cli \
+    pipx:rovr
 
 #FROM base as agentjail
 #RUN curl -sS https://starship.rs/install.sh | sh -s -- -p unknown-linux-gnu -a x86_64
@@ -64,6 +64,7 @@ RUN mise use -g \
 # aliases
 RUN echo "alias files='rovr'" >> ~/.${SHELL}rc && \
     echo "alias edit='${EDITOR}'" >> ~/.${SHELL}rc && \
+    echo "alias /exit=exit" >> ~/.${SHELL}rc && \
     echo "\n\n" >> ~/.${SHELL}rc
 
 # configure prompt
@@ -98,8 +99,8 @@ RUN . /etc/os-release && \
       AVAILABLE_AGENTS="${AVAILABLE_AGENTS} [bold green]OpenCode[/bold green]"; \
     fi && \
     AVAILABLE_EDITORS="Available Editors: vim, nano, micro (Primary: [bold blue]${EDITOR}[/bold blue])" && \
-    ALIASES="Available Aliases: [blue][bold]\"files\"[/bold]: rovr, [bold]\"edit\"[/bold]: ${EDITOR}[/blue]" && \
-    printf "rich '[b]Welcome to [bold white]AgentJail![/bold white][/b]' --print --rule --rule-style 'bold blue' && rich 'You are now in a container running [bold gold3]$PRETTY_NAME[/bold gold3] \nYour project is mounted at [bold gold3]/project[/bold gold3] \nAvailable Package Managers: [bold dark_goldenrod]$PKG_MANAGER, mise, uv, pip, npm[/bold dark_goldenrod] \nDefault shell: [bold dark_goldenrod]$SHELL[/bold dark_goldenrod] \n \n$AVAILABLE_AGENTS \n \n$AVAILABLE_EDITORS \n \n$ALIASES \n\n type [red bold]\"exit\"[/red bold] to exit the container \n\nhave fun, and most importantly, \n[bold medium_orchid]~~ v i b e ~~[/bold medium_orchid]\n\n' --print --style 'blue'" >>  ~/.${SHELL}rc
+    ALIASES="Available Aliases: [blue][bold]\"files\"[/bold]: [green]rovr[/green], [bold]\"edit\"[/bold]: [green]${EDITOR}[/green][/blue]" && \
+    printf "rich '[b]Welcome to [bold white]AgentJail![/bold white][/b]' --print --rule --rule-style 'bold blue' && rich 'You are now in a container running [bold gold3]$PRETTY_NAME[/bold gold3] \nYour project is mounted at [bold gold3]/project[/bold gold3] \nAvailable Package Managers: [bold dark_goldenrod]$PKG_MANAGER, mise, uv, pip, npm[/bold dark_goldenrod] \nDefault shell: [bold dark_goldenrod]$SHELL[/bold dark_goldenrod] \n \n$AVAILABLE_AGENTS \n \n$AVAILABLE_EDITORS \n \n$ALIASES \n\n type [red bold]exit[/red bold] to exit the container \n\nhave fun, and most importantly, \n[bold medium_orchid]~~ v i b e ~~[/bold medium_orchid]\n\n' --print --style 'blue'" >>  ~/.${SHELL}rc
 
 # install starship
 RUN wget https://github.com/starship/starship/releases/download/v${STARSHIP_VERSION}/starship-x86_64-unknown-linux-gnu.tar.gz && \

@@ -130,7 +130,11 @@ type GlobalConfig struct {
 	DefaultEditor        string                `yaml:"default_editor"`
 	DefaultShell         string                `yaml:"default_shell"`
 	MountSystemGitconfig bool                  `yaml:"mount_system_gitconfig"`
+	MountGhConfig        bool                  `yaml:"mount_gh_config"`
+	GithubToken          string                `yaml:"github_token"`
+	PreferredAgent       string                `yaml:"preferred_agent"`
 	AgentFrameworks      AgentFrameworksConfig `yaml:"agent_frameworks"`
+	ContainerEnvVars     map[string]string     `yaml:"container_env_vars"`
 }
 
 type AgentFrameworksConfig struct {
@@ -163,6 +167,7 @@ func loadGlobalConfig() (*GlobalConfig, error) {
 			DefaultEditor:        "micro",
 			DefaultShell:         "zsh",
 			MountSystemGitconfig: true,
+			MountGhConfig:        true,
 			AgentFrameworks: AgentFrameworksConfig{
 				Copilot: FrameworkConfig{
 					Enabled: true,
@@ -337,6 +342,107 @@ func checkVersionUpdate(agentJailDir string, currentVersion string) error {
 	return nil
 }
 
+// loadGlobalConfigFromPath loads a GlobalConfig from a specific file path.
+func loadGlobalConfigFromPath(path string) (*GlobalConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)
+	}
+	var config GlobalConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse config file %s: %w", path, err)
+	}
+	return &config, nil
+}
+
+// printCleanConfig prints a clean, commented config template to stdout.
+func printCleanConfig() {
+	fmt.Print(`# AgentJail configuration file
+# Default location: ~/.config/agentjail/config.yaml
+
+# Default editor to use inside the container (e.g. micro, vim, nano)
+default_editor: micro
+
+# Default shell to use inside the container (bash or zsh)
+default_shell: zsh
+
+# Mount the host ~/.gitconfig into the container
+mount_system_gitconfig: true
+
+# Mount the host ~/.config/gh into the container (used for gh copilot auth)
+mount_gh_config: true
+
+# GitHub personal access token (optional; falls back to GH_TOKEN / GITHUB_TOKEN env vars)
+github_token: ""
+
+# Preferred agent to auto-start with -A. Must match an enabled agent framework name
+# (e.g. "copilot" or "opencode"). Leave empty to be prompted when using -A.
+preferred_agent: ""
+
+# Agent framework settings
+agent_frameworks:
+  opencode:
+    enabled: false
+    plugins: []
+  copilot:
+    enabled: true
+    plugins: []
+
+# Environment variables to inject into the container.
+# Supports two schemas:
+#   CONT_VAR: value            # set to a literal value
+#   CONT_VAR: env:HOST_VAR     # read from the host environment variable HOST_VAR
+container_env_vars: {}
+#   MY_TOKEN: env:MY_HOST_TOKEN
+#   DEBUG: "true"
+`)
+}
+
+// enabledAgents returns a list of agent names that are enabled in the config.
+func enabledAgents(config *GlobalConfig) []string {
+	var agents []string
+	if config.AgentFrameworks.Copilot.Enabled {
+		agents = append(agents, "copilot")
+	}
+	if config.AgentFrameworks.OpenCode.Enabled {
+		agents = append(agents, "opencode")
+	}
+	return agents
+}
+
+// agentCommand returns the shell command string to launch the given agent.
+func agentCommand(name string) string {
+	switch name {
+	case "opencode":
+		return "opencode"
+	case "copilot":
+		return "copilot"
+	default:
+		return name
+	}
+}
+
+// chooseEnabledAgent shows an interactive prompt and returns the chosen agent name.
+func chooseEnabledAgent(config *GlobalConfig) string {
+	agents := enabledAgents(config)
+	if len(agents) == 0 {
+		return ""
+	}
+	if len(agents) == 1 {
+		return agents[0]
+	}
+	fmt.Println("Choose an agent to start:")
+	for i, a := range agents {
+		fmt.Printf("  %d. %s\n", i+1, a)
+	}
+	fmt.Print("Enter number: ")
+	var choice int
+	if _, err := fmt.Scan(&choice); err == nil && choice >= 1 && choice <= len(agents) {
+		return agents[choice-1]
+	}
+	return agents[0]
+}
+
 // arrayFlags allows setting multiple flags of the same name.
 type arrayFlags []string
 
@@ -350,14 +456,53 @@ func (i *arrayFlags) Set(value string) error {
 }
 
 func main() {
+	// Pre-scan os.Args for --config which takes an optional argument:
+	//   agentjail --config             → print clean config and exit
+	//   agentjail --config /path/file  → load config from that path
+	var configFlagArg *string // nil = not provided; &"" = print mode; &"path" = load path
+	{
+		newArgs := []string{os.Args[0]}
+		for i := 1; i < len(os.Args); i++ {
+			arg := os.Args[i]
+			if arg == "--config" || arg == "-config" {
+				empty := ""
+				configFlagArg = &empty
+				if i+1 < len(os.Args) && !strings.HasPrefix(os.Args[i+1], "-") {
+					path := os.Args[i+1]
+					configFlagArg = &path
+					i++
+				}
+			} else {
+				newArgs = append(newArgs, arg)
+			}
+		}
+		os.Args = newArgs
+	}
+
+	if configFlagArg != nil && *configFlagArg == "" {
+		printCleanConfig()
+		os.Exit(0)
+	}
+
 	// 0. Load Global Config
-	globalConfig, err := loadGlobalConfig()
+	var globalConfig *GlobalConfig
+	var err error
+	if configFlagArg != nil && *configFlagArg != "" {
+		globalConfig, err = loadGlobalConfigFromPath(*configFlagArg)
+		if err != nil {
+			fmt.Printf("Error loading config: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		globalConfig, err = loadGlobalConfig()
+	}
 	if err != nil {
 		fmt.Printf("Warning: Could not load global config: %v. Using defaults.\n", err)
 		globalConfig = &GlobalConfig{
 			DefaultEditor:        "micro",
 			DefaultShell:         "zsh",
 			MountSystemGitconfig: true,
+			MountGhConfig:        true,
 			AgentFrameworks: AgentFrameworksConfig{
 				Copilot: FrameworkConfig{Enabled: true},
 			},
@@ -383,6 +528,8 @@ func main() {
 	buildPtr := flag.Bool("build", false, "Build/rebuild the agentjail image (uses cache)")
 	flag.BoolVar(buildPtr, "b", false, "Build/rebuild the agentjail image (uses cache)")
 	buildNoCachePtr := flag.Bool("build-no-cache", false, "Build/rebuild the agentjail image without cache")
+	privilegedPtr := flag.Bool("P", false, "Run container in privileged mode with Docker daemon exposed")
+	autoStartPtr := flag.Bool("A", false, "Automatically start the preferred agent when the container starts")
 
 	var volumeFlags arrayFlags
 	flag.Var(&volumeFlags, "v", "Additional volume mounts (e.g. /host:/container)")
@@ -543,8 +690,13 @@ func main() {
 	// 4. Run Container
 	fmt.Println("\nStarting container...")
 
-	// Generate unique container name based on directory
-	containerName := fmt.Sprintf("agentjail-%s", filepath.Base(absDir))
+	// Generate container name: "agentjail." + first 5 chars of project directory name
+	dirName := filepath.Base(absDir)
+	prefix := dirName
+	if len(prefix) > 5 {
+		prefix = prefix[:5]
+	}
+	containerName := fmt.Sprintf("agentjail.%s", prefix)
 
 	// Create .agentjail folder and update gitignore
 	agentJailDir, err := createAgentJailFolder(absDir)
@@ -612,13 +764,55 @@ func main() {
 		opencodeMount := fmt.Sprintf("%s/opencode/opencode.json:/root/.config/opencode/config.json", agentJailDir)
 		runArgs = append(runArgs, "-v", opencodeMount)
 		volumes = append(volumes, opencodeMount)
+		// Mount host opencode data dir for auth persistence
+		usr, _ := user.Current()
+		hostOpencodePath := filepath.Join(usr.HomeDir, ".config", "opencode")
+		if _, err := os.Stat(hostOpencodePath); err == nil {
+			hostOpencodeMount := fmt.Sprintf("%s:/root/.local/share/opencode", hostOpencodePath)
+			runArgs = append(runArgs, "-v", hostOpencodeMount)
+			volumes = append(volumes, hostOpencodeMount)
+		}
 	}
 
 	// Mount copilot config if enabled
 	if globalConfig.AgentFrameworks.Copilot.Enabled {
-		copilotMount := fmt.Sprintf("%s/copilot:/root/.config/github-copilot", agentJailDir)
-		runArgs = append(runArgs, "-v", copilotMount)
-		volumes = append(volumes, copilotMount)
+		usr, _ := user.Current()
+		hostCopilotPath := filepath.Join(usr.HomeDir, ".config", "github-copilot")
+		if _, err := os.Stat(hostCopilotPath); err == nil {
+			// Mount host credentials so container doesn't re-authenticate
+			copilotMount := fmt.Sprintf("%s:/root/.config/github-copilot", hostCopilotPath)
+			runArgs = append(runArgs, "-v", copilotMount)
+			volumes = append(volumes, copilotMount)
+		} else {
+			// Fall back to project-local dir (will require auth on first use)
+			copilotMount := fmt.Sprintf("%s/copilot:/root/.config/github-copilot", agentJailDir)
+			runArgs = append(runArgs, "-v", copilotMount)
+			volumes = append(volumes, copilotMount)
+		}
+
+		// Mount gh CLI config (primary auth store used by gh copilot)
+		if globalConfig.MountGhConfig {
+			hostGhPath := filepath.Join(usr.HomeDir, ".config", "gh")
+			if _, err := os.Stat(hostGhPath); err == nil {
+				ghMount := fmt.Sprintf("%s:/root/.config/gh", hostGhPath)
+				runArgs = append(runArgs, "-v", ghMount)
+				volumes = append(volumes, ghMount)
+				fmt.Println("Mounting host gh CLI config for Copilot auth.")
+			}
+		}
+
+		// Pass API token if configured or present in host environment
+		token := globalConfig.GithubToken
+		if token == "" {
+			token = os.Getenv("GH_TOKEN")
+		}
+		if token == "" {
+			token = os.Getenv("GITHUB_TOKEN")
+		}
+		if token != "" {
+			runArgs = append(runArgs, "-e", fmt.Sprintf("GH_TOKEN=%s", token))
+			fmt.Println("Passing GH_TOKEN to container for Copilot auth.")
+		}
 	}
 
 	// Mount system gitconfig if enabled
@@ -630,6 +824,12 @@ func main() {
 			runArgs = append(runArgs, "-v", gitconfigMount)
 			volumes = append(volumes, gitconfigMount)
 		}
+	}
+
+	// Handle -P (Privileged + Docker daemon)
+	if *privilegedPtr {
+		runArgs = append(runArgs, "--privileged")
+		runArgs = append(runArgs, "-v", "/var/run/docker.sock:/var/run/docker.sock")
 	}
 
 	// Handle -n (Network)
@@ -664,6 +864,21 @@ func main() {
 		volumes = append(volumes, v)
 	}
 
+	// Handle container_env_vars from config
+	for key, val := range globalConfig.ContainerEnvVars {
+		resolvedVal := val
+		if strings.HasPrefix(val, "env:") {
+			hostVarName := strings.TrimPrefix(val, "env:")
+			resolvedVal = os.Getenv(hostVarName)
+			if resolvedVal == "" {
+				// Host variable is not set; skip to avoid clobbering file-based auth fallbacks
+				fmt.Printf("Warning: host environment variable %q is not set; skipping %q\n", hostVarName, key)
+				continue
+			}
+		}
+		runArgs = append(runArgs, "-e", fmt.Sprintf("%s=%s", key, resolvedVal))
+	}
+
 	// Create and save metadata
 	metadata := &AgentJailMetadata{
 		ContainerName:    containerName,
@@ -681,6 +896,23 @@ func main() {
 	}
 
 	runArgs = append(runArgs, imageName)
+
+	// Handle -A (auto-start agent)
+	if *autoStartPtr {
+		agent := globalConfig.PreferredAgent
+		if agent == "" {
+			agent = chooseEnabledAgent(globalConfig)
+		}
+		if agent != "" {
+			cmd := agentCommand(agent)
+			shell := *shellPtr
+			// Use -i so the shell rc file is sourced (enables mise PATH activation),
+			// run mise trust/install, then launch the agent, then drop into an interactive shell.
+			initCmd := fmt.Sprintf("mise trust && mise install; %s; exec %s", cmd, shell)
+			runArgs = append(runArgs, shell, "-i", "-c", initCmd)
+			fmt.Printf("Auto-starting agent: %s\n", agent)
+		}
+	}
 
 	fmt.Printf("Exec: docker %v\n", runArgs)
 

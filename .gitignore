@@ -1,0 +1,7 @@
+dist/
+dist/agentjail
+.mise/*
+.agentjail/*
+opencode.json
+test_project/
+opencode_config.json
