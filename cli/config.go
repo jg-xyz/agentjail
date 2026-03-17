@@ -19,6 +19,7 @@ type GlobalConfig struct {
 	PreferredAgent       string                `yaml:"preferred_agent"`
 	AgentFrameworks      AgentFrameworksConfig `yaml:"agent_frameworks"`
 	ContainerEnvVars     map[string]string     `yaml:"container_env_vars"`
+	PortMappings         []string              `yaml:"port_mappings"`
 }
 
 type AgentFrameworksConfig struct {
@@ -145,5 +146,13 @@ agent_frameworks:
 container_env_vars: {}
 #   MY_TOKEN: env:MY_HOST_TOKEN
 #   DEBUG: "true"
+
+# Port mappings to publish from the container to the host.
+# Uses the same format as docker run -p: [hostIP:]hostPort:containerPort[/protocol]
+# or containerPort alone (Docker assigns a random host port).
+port_mappings: []
+#   - "8080:8080"         # map host 8080 -> container 8080
+#   - "127.0.0.1:3000:3000"  # bind only on loopback
+#   - "5432:5432/tcp"    # explicit protocol
 `)
 }

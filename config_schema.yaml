@@ -157,3 +157,24 @@ container_env_vars: {}
 #   OPENAI_API_KEY: env:OPENAI_API_KEY         # forward a host API key
 #   MY_TEAM: acme                              # inject a literal value
 #   DEBUG: "false"                             # inject a literal value
+
+
+# --------------------------------------------------------------
+# port_mappings
+#   A list of port mappings to publish from the container to the
+#   host at startup, equivalent to docker run -p.
+#
+#   Each entry uses Docker's -p format:
+#     [hostIP:]hostPort:containerPort[/protocol]
+#   or simply containerPort (Docker assigns a random host port).
+#
+#   These are merged with any -p flags passed on the command line.
+#
+#   Default: [] (no ports published)
+# --------------------------------------------------------------
+port_mappings: []
+
+# Examples:
+#   - "8080:8080"              # forward host 8080 -> container 8080
+#   - "127.0.0.1:3000:3000"   # bind only on loopback
+#   - "5432:5432/tcp"         # explicit TCP protocol

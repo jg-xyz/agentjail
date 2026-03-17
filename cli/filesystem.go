@@ -106,7 +106,15 @@ func copyTemplateConfigs(agentJailDir string, config *GlobalConfig) error {
 		if err := os.MkdirAll(copilotDir, 0755); err != nil {
 			return err
 		}
-		// No templates for copilot yet, but we create the dir
+		for _, file := range []string{"config.json", "mcp.json"} {
+			content, err := templatesFS.ReadFile("templates/configs/copilot/" + file)
+			if err != nil {
+				continue
+			}
+			if err := os.WriteFile(filepath.Join(copilotDir, file), content, 0644); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil

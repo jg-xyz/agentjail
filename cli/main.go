@@ -102,6 +102,9 @@ func main() {
 	var volumeFlags arrayFlags
 	flag.Var(&volumeFlags, "v", "Additional volume mounts (e.g. /host:/container)")
 
+	var portFlags arrayFlags
+	flag.Var(&portFlags, "p", "Publish container port(s) to the host (e.g. 8080:8080)")
+
 	flag.Parse()
 
 	// Check if no arguments were provided (except flags)
@@ -151,10 +154,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 1. Ensure ./opencode.json exists (default behavior requirement) - OPTIONAL NOW
-	// Only create if it doesn't exist and isn't provided via -C
+	// 1. Ensure ./opencode.json exists only when opencode agent is enabled
 	defaultConfigPath := filepath.Join(cwd, "opencode.json")
-	if *configPtr == "opencode.json" {
+	if *configPtr == "opencode.json" && globalConfig.AgentFrameworks.OpenCode.Enabled {
 		if _, err := os.Stat(defaultConfigPath); os.IsNotExist(err) {
 			// Try to ensure it exists from template
 			if err := ensureFileFromTemplate(defaultConfigPath, "configs/opencode/opencode.json"); err != nil {
@@ -369,6 +371,17 @@ func main() {
 			}
 		}
 
+		// Mount copilot config files (config.json, mcp.json) as targeted mounts so
+		// they are present even when the host credential directory is bind-mounted.
+		for _, cfgFile := range []string{"config.json", "mcp.json"} {
+			cfgPath := filepath.Join(agentJailDir, "copilot", cfgFile)
+			if _, err := os.Stat(cfgPath); err == nil {
+				mount := fmt.Sprintf("%s:/root/.config/github-copilot/%s", cfgPath, cfgFile)
+				runArgs = append(runArgs, "-v", mount)
+				volumes = append(volumes, mount)
+			}
+		}
+
 		// Pass API token if configured or present in host environment
 		token := globalConfig.GithubToken
 		if token == "" {
@@ -430,6 +443,12 @@ func main() {
 	for _, v := range volumeFlags {
 		runArgs = append(runArgs, "-v", v)
 		volumes = append(volumes, v)
+	}
+
+	// Handle port mappings: merge config-defined mappings with -p flags
+	allPorts := append(globalConfig.PortMappings, portFlags...)
+	for _, p := range allPorts {
+		runArgs = append(runArgs, "-p", p)
 	}
 
 	// Handle container_env_vars from config
