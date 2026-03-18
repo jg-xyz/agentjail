@@ -1,8 +1,6 @@
 package main
 
 import (
-	"embed"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -11,437 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
-
-//go:embed templates/*
-var templatesFS embed.FS
-
-// ensureFileFromTemplate checks if targetPath exists. If not, it writes the template content to it.
-func ensureFileFromTemplate(targetPath string, templateName string) error {
-	if _, err := os.Stat(targetPath); os.IsNotExist(err) {
-		content, err := templatesFS.ReadFile("templates/" + templateName)
-		if err != nil {
-			return fmt.Errorf("failed to read template %s: %w", templateName, err)
-		}
-
-		if err := os.WriteFile(targetPath, content, 0644); err != nil {
-			return fmt.Errorf("failed to write %s: %w", targetPath, err)
-		}
-		fmt.Printf("Created %s from template.\n", targetPath)
-	}
-	return nil
-}
-
-// createTempDockerfile creates a temporary Dockerfile from the template and returns its path.
-func createTempDockerfile() (string, error) {
-	content, err := templatesFS.ReadFile("templates/Dockerfile")
-	if err != nil {
-		return "", fmt.Errorf("failed to read Dockerfile template: %w", err)
-	}
-
-	tmpFile, err := os.CreateTemp("", "Dockerfile-agentjail-*")
-	if err != nil {
-		return "", fmt.Errorf("failed to create temp Dockerfile: %w", err)
-	}
-	defer tmpFile.Close()
-
-	if _, err := tmpFile.Write(content); err != nil {
-		return "", fmt.Errorf("failed to write to temp Dockerfile: %w", err)
-	}
-
-	return tmpFile.Name(), nil
-}
-
-func imageExists(imageName string) bool {
-	cmd := exec.Command("docker", "image", "inspect", imageName)
-	cmd.Stdout = nil // specific output not needed, just exit code
-	cmd.Stderr = nil
-	return cmd.Run() == nil
-}
-
-// getContainerForDirectory finds a running container that has the current directory mounted
-func getContainerForDirectory(dir string) (string, error) {
-	// Get all running containers
-	cmd := exec.Command("docker", "ps", "--format", "{{.Names}}\t{{.Mounts}}")
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to list containers: %w", err)
-	}
-
-	// Split by lines and check each container
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-
-		parts := strings.Split(line, "\t")
-		if len(parts) < 2 {
-			continue
-		}
-
-		containerName := parts[0]
-		mounts := parts[1]
-
-		// Check if the current directory is in the mounts
-		if strings.Contains(mounts, dir) {
-			return containerName, nil
-		}
-	}
-
-	return "", nil
-}
-
-// Metadata structure for .agentjail/metadata.json
-type AgentJailMetadata struct {
-	ContainerName    string            `json:"container_name"`
-	Network          string            `json:"network,omitempty"`
-	Volumes          []string          `json:"volumes"`
-	EnvironmentVars  map[string]string `json:"environment_vars"`
-	ImageVersion     string            `json:"image_version"`
-	CreatedAt        time.Time         `json:"created_at"`
-	LastUsed         time.Time         `json:"last_used"`
-	AgentJailVersion string            `json:"agentjail_version"`
-}
-
-// createAgentJailFolder creates the .agentjail folder and ensures it's set up properly
-func createAgentJailFolder(baseDir string) (string, error) {
-	agentJailDir := filepath.Join(baseDir, ".agentjail")
-
-	if err := os.MkdirAll(agentJailDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create .agentjail directory: %w", err)
-	}
-
-	// Create history file if it doesn't exist
-	historyFile := filepath.Join(agentJailDir, "bash_history")
-	if _, err := os.Stat(historyFile); os.IsNotExist(err) {
-		if err := os.WriteFile(historyFile, []byte{}, 0644); err != nil {
-			return "", fmt.Errorf("failed to create history file: %w", err)
-		}
-	}
-
-	return agentJailDir, nil
-}
-
-// GlobalConfig structure for ~/.config/agentjail/config.yaml
-type GlobalConfig struct {
-	DefaultEditor        string                `yaml:"default_editor"`
-	DefaultShell         string                `yaml:"default_shell"`
-	MountSystemGitconfig bool                  `yaml:"mount_system_gitconfig"`
-	MountGhConfig        bool                  `yaml:"mount_gh_config"`
-	GithubToken          string                `yaml:"github_token"`
-	PreferredAgent       string                `yaml:"preferred_agent"`
-	AgentFrameworks      AgentFrameworksConfig `yaml:"agent_frameworks"`
-	ContainerEnvVars     map[string]string     `yaml:"container_env_vars"`
-}
-
-type AgentFrameworksConfig struct {
-	OpenCode FrameworkConfig `yaml:"opencode"`
-	Copilot  FrameworkConfig `yaml:"copilot"`
-}
-
-type FrameworkConfig struct {
-	Enabled bool     `yaml:"enabled"`
-	Plugins []string `yaml:"plugins"`
-}
-
-func getGlobalConfigPath() (string, error) {
-	usr, err := user.Current()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(usr.HomeDir, ".config", "agentjail", "config.yaml"), nil
-}
-
-func loadGlobalConfig() (*GlobalConfig, error) {
-	configPath, err := getGlobalConfigPath()
-	if err != nil {
-		return nil, err
-	}
-
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		// Create default config
-		config := &GlobalConfig{
-			DefaultEditor:        "micro",
-			DefaultShell:         "zsh",
-			MountSystemGitconfig: true,
-			MountGhConfig:        true,
-			AgentFrameworks: AgentFrameworksConfig{
-				Copilot: FrameworkConfig{
-					Enabled: true,
-				},
-			},
-		}
-		if err := saveGlobalConfig(config); err != nil {
-			return nil, err
-		}
-		return config, nil
-	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return nil, err
-	}
-
-	var config GlobalConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, err
-	}
-
-	return &config, nil
-}
-
-func saveGlobalConfig(config *GlobalConfig) error {
-	configPath, err := getGlobalConfigPath()
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
-		return err
-	}
-
-	data, err := yaml.Marshal(config)
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(configPath, data, 0644)
-}
-
-// copyTemplateConfigs copies tool-specific configs from templates to .agentjail
-func copyTemplateConfigs(agentJailDir string, config *GlobalConfig) error {
-	// Always copy rovr
-	rovrDir := filepath.Join(agentJailDir, "rovr")
-	if err := os.MkdirAll(rovrDir, 0755); err != nil {
-		return err
-	}
-
-	for _, file := range []string{"config.toml", "pins.json"} {
-		content, err := templatesFS.ReadFile("templates/configs/rovr/" + file)
-		if err != nil {
-			continue // Might not exist
-		}
-		if err := os.WriteFile(filepath.Join(rovrDir, file), content, 0644); err != nil {
-			return err
-		}
-	}
-
-	// Copy opencode if enabled
-	if config.AgentFrameworks.OpenCode.Enabled {
-		opencodeDir := filepath.Join(agentJailDir, "opencode")
-		if err := os.MkdirAll(opencodeDir, 0755); err != nil {
-			return err
-		}
-		content, err := templatesFS.ReadFile("templates/configs/opencode/opencode.json")
-		if err == nil {
-			if err := os.WriteFile(filepath.Join(opencodeDir, "opencode.json"), content, 0644); err != nil {
-				return err
-			}
-		}
-	}
-
-	// Copy copilot if enabled
-	if config.AgentFrameworks.Copilot.Enabled {
-		copilotDir := filepath.Join(agentJailDir, "copilot")
-		if err := os.MkdirAll(copilotDir, 0755); err != nil {
-			return err
-		}
-		// No templates for copilot yet, but we create the dir
-	}
-
-	return nil
-}
-
-// saveMetadata saves the container metadata to .agentjail/metadata.json
-func saveMetadata(agentJailDir string, metadata *AgentJailMetadata) error {
-	metadata.LastUsed = time.Now()
-
-	metadataFile := filepath.Join(agentJailDir, "metadata.json")
-
-	data, err := json.MarshalIndent(metadata, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal metadata: %w", err)
-	}
-
-	if err := os.WriteFile(metadataFile, data, 0644); err != nil {
-		return fmt.Errorf("failed to write metadata file: %w", err)
-	}
-
-	return nil
-}
-
-// loadMetadata loads existing metadata from .agentjail/metadata.json
-func loadMetadata(agentJailDir string) (*AgentJailMetadata, error) {
-	metadataFile := filepath.Join(agentJailDir, "metadata.json")
-
-	data, err := os.ReadFile(metadataFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil // No existing metadata
-		}
-		return nil, fmt.Errorf("failed to read metadata file: %w", err)
-	}
-
-	var metadata AgentJailMetadata
-	if err := json.Unmarshal(data, &metadata); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
-	}
-
-	return &metadata, nil
-}
-
-// updateGitignore updates .gitignore to ignore .agentjail folder
-func updateGitignore(baseDir string) error {
-	gitignoreFile := filepath.Join(baseDir, ".gitignore")
-
-	gitignoreContent := ""
-	if data, err := os.ReadFile(gitignoreFile); err == nil {
-		gitignoreContent = string(data)
-	}
-
-	// Check if .agentjail is already ignored
-	if strings.Contains(gitignoreContent, ".agentjail") {
-		return nil // Already present
-	}
-
-	// Add .agentjail to gitignore
-	newContent := gitignoreContent
-	if newContent != "" && !strings.HasSuffix(newContent, "\n") {
-		newContent += "\n"
-	}
-	newContent += ".agentjail/\n"
-
-	if err := os.WriteFile(gitignoreFile, []byte(newContent), 0644); err != nil {
-		return fmt.Errorf("failed to update .gitignore: %w", err)
-	}
-
-	fmt.Println("Added .agentjail/ to .gitignore")
-	return nil
-}
-
-// checkVersionUpdate checks if agentjail version changed and updates metadata
-func checkVersionUpdate(agentJailDir string, currentVersion string) error {
-	existingMetadata, err := loadMetadata(agentJailDir)
-	if err != nil {
-		return fmt.Errorf("failed to load existing metadata: %w", err)
-	}
-
-	if existingMetadata != nil && existingMetadata.AgentJailVersion != currentVersion {
-		fmt.Printf("AgentJail version updated from %s to %s\n", existingMetadata.AgentJailVersion, currentVersion)
-		existingMetadata.AgentJailVersion = currentVersion
-		existingMetadata.LastUsed = time.Now()
-
-		if err := saveMetadata(agentJailDir, existingMetadata); err != nil {
-			return fmt.Errorf("failed to update metadata with new version: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// loadGlobalConfigFromPath loads a GlobalConfig from a specific file path.
-func loadGlobalConfigFromPath(path string) (*GlobalConfig, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)
-	}
-	var config GlobalConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse config file %s: %w", path, err)
-	}
-	return &config, nil
-}
-
-// printCleanConfig prints a clean, commented config template to stdout.
-func printCleanConfig() {
-	fmt.Print(`# AgentJail configuration file
-# Default location: ~/.config/agentjail/config.yaml
-
-# Default editor to use inside the container (e.g. micro, vim, nano)
-default_editor: micro
-
-# Default shell to use inside the container (bash or zsh)
-default_shell: zsh
-
-# Mount the host ~/.gitconfig into the container
-mount_system_gitconfig: true
-
-# Mount the host ~/.config/gh into the container (used for gh copilot auth)
-mount_gh_config: true
-
-# GitHub personal access token (optional; falls back to GH_TOKEN / GITHUB_TOKEN env vars)
-github_token: ""
-
-# Preferred agent to auto-start with -A. Must match an enabled agent framework name
-# (e.g. "copilot" or "opencode"). Leave empty to be prompted when using -A.
-preferred_agent: ""
-
-# Agent framework settings
-agent_frameworks:
-  opencode:
-    enabled: false
-    plugins: []
-  copilot:
-    enabled: true
-    plugins: []
-
-# Environment variables to inject into the container.
-# Supports two schemas:
-#   CONT_VAR: value            # set to a literal value
-#   CONT_VAR: env:HOST_VAR     # read from the host environment variable HOST_VAR
-container_env_vars: {}
-#   MY_TOKEN: env:MY_HOST_TOKEN
-#   DEBUG: "true"
-`)
-}
-
-// enabledAgents returns a list of agent names that are enabled in the config.
-func enabledAgents(config *GlobalConfig) []string {
-	var agents []string
-	if config.AgentFrameworks.Copilot.Enabled {
-		agents = append(agents, "copilot")
-	}
-	if config.AgentFrameworks.OpenCode.Enabled {
-		agents = append(agents, "opencode")
-	}
-	return agents
-}
-
-// agentCommand returns the shell command string to launch the given agent.
-func agentCommand(name string) string {
-	switch name {
-	case "opencode":
-		return "opencode"
-	case "copilot":
-		return "copilot"
-	default:
-		return name
-	}
-}
-
-// chooseEnabledAgent shows an interactive prompt and returns the chosen agent name.
-func chooseEnabledAgent(config *GlobalConfig) string {
-	agents := enabledAgents(config)
-	if len(agents) == 0 {
-		return ""
-	}
-	if len(agents) == 1 {
-		return agents[0]
-	}
-	fmt.Println("Choose an agent to start:")
-	for i, a := range agents {
-		fmt.Printf("  %d. %s\n", i+1, a)
-	}
-	fmt.Print("Enter number: ")
-	var choice int
-	if _, err := fmt.Scan(&choice); err == nil && choice >= 1 && choice <= len(agents) {
-		return agents[choice-1]
-	}
-	return agents[0]
-}
 
 // arrayFlags allows setting multiple flags of the same name.
 type arrayFlags []string
@@ -534,6 +102,9 @@ func main() {
 	var volumeFlags arrayFlags
 	flag.Var(&volumeFlags, "v", "Additional volume mounts (e.g. /host:/container)")
 
+	var portFlags arrayFlags
+	flag.Var(&portFlags, "p", "Publish container port(s) to the host (e.g. 8080:8080)")
+
 	flag.Parse()
 
 	// Check if no arguments were provided (except flags)
@@ -583,10 +154,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 1. Ensure ./opencode.json exists (default behavior requirement) - OPTIONAL NOW
-	// Only create if it doesn't exist and isn't provided via -C
+	// 1. Ensure ./opencode.json exists only when opencode agent is enabled
 	defaultConfigPath := filepath.Join(cwd, "opencode.json")
-	if *configPtr == "opencode.json" {
+	if *configPtr == "opencode.json" && globalConfig.AgentFrameworks.OpenCode.Enabled {
 		if _, err := os.Stat(defaultConfigPath); os.IsNotExist(err) {
 			// Try to ensure it exists from template
 			if err := ensureFileFromTemplate(defaultConfigPath, "configs/opencode/opencode.json"); err != nil {
@@ -801,6 +371,17 @@ func main() {
 			}
 		}
 
+		// Mount copilot config files (config.json, mcp.json) as targeted mounts so
+		// they are present even when the host credential directory is bind-mounted.
+		for _, cfgFile := range []string{"config.json", "mcp.json"} {
+			cfgPath := filepath.Join(agentJailDir, "copilot", cfgFile)
+			if _, err := os.Stat(cfgPath); err == nil {
+				mount := fmt.Sprintf("%s:/root/.config/github-copilot/%s", cfgPath, cfgFile)
+				runArgs = append(runArgs, "-v", mount)
+				volumes = append(volumes, mount)
+			}
+		}
+
 		// Pass API token if configured or present in host environment
 		token := globalConfig.GithubToken
 		if token == "" {
@@ -862,6 +443,21 @@ func main() {
 	for _, v := range volumeFlags {
 		runArgs = append(runArgs, "-v", v)
 		volumes = append(volumes, v)
+	}
+
+	// Handle port mappings: merge config-defined mappings with -p flags
+	// Build a new slice to avoid mutating globalConfig.PortMappings via append.
+	allPorts := make([]string, 0, len(globalConfig.PortMappings)+len(portFlags))
+	allPorts = append(allPorts, globalConfig.PortMappings...)
+	allPorts = append(allPorts, portFlags...)
+	for _, p := range allPorts {
+		pTrimmed := strings.TrimSpace(p)
+		if pTrimmed == "" {
+			// Skip empty/whitespace-only port mappings to avoid emitting `-p ""`.
+			fmt.Println("Warning: skipping empty port mapping entry")
+			continue
+		}
+		runArgs = append(runArgs, "-p", pTrimmed)
 	}
 
 	// Handle container_env_vars from config
