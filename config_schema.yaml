@@ -79,8 +79,10 @@ github_token: ""               # any PAT string, or "" to use fallback chain
 #   environment variable inside the container.
 #
 #   This option is silently ignored when GITHUB_TOKEN is already
-#   set in the host environment; in that case the existing host
-#   GITHUB_TOKEN value is used instead of the injected one.
+#   set in the host environment; in that case no token is
+#   injected by this option. To use the host GITHUB_TOKEN inside
+#   the container, explicitly forward it via container_env_vars
+#   (for example: GITHUB_TOKEN: env:GITHUB_TOKEN).
 #
 #   Values: true | false
 #   Default: false
