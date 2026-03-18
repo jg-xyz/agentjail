@@ -3,7 +3,7 @@ bat = "latest"
 go = "1.25.3"
 
 [tasks.build]
-run = "go build -buildvcs=false -o ../dist/agentjail ."
+run = "mkdir -p ../dist && go build -buildvcs=false -o ../dist/agentjail ."
 dir = "cli"
 
 [tasks.test]
