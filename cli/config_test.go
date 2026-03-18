@@ -158,6 +158,7 @@ func TestPrintCleanConfig_ContainsExpectedKeys(t *testing.T) {
 		"mount_system_gitconfig",
 		"mount_gh_config",
 		"github_token",
+		"inject_gh_auth_token",
 		"preferred_agent",
 		"agent_frameworks",
 		"container_env_vars",
@@ -220,5 +221,48 @@ default_shell: zsh
 	}
 	if len(cfg.PortMappings) != 0 {
 		t.Errorf("expected empty port mappings, got %v", cfg.PortMappings)
+	}
+}
+
+func TestLoadGlobalConfigFromPath_InjectGhAuthToken(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	content := `
+default_editor: micro
+default_shell: zsh
+inject_gh_auth_token: true
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := loadGlobalConfigFromPath(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.InjectGhAuthToken {
+		t.Error("InjectGhAuthToken: expected true")
+	}
+}
+
+func TestLoadGlobalConfigFromPath_InjectGhAuthTokenDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	content := `
+default_editor: micro
+default_shell: zsh
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := loadGlobalConfigFromPath(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.InjectGhAuthToken {
+		t.Error("InjectGhAuthToken: expected false (default)")
 	}
 }
