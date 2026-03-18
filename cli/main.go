@@ -446,9 +446,18 @@ func main() {
 	}
 
 	// Handle port mappings: merge config-defined mappings with -p flags
-	allPorts := append(globalConfig.PortMappings, portFlags...)
+	// Build a new slice to avoid mutating globalConfig.PortMappings via append.
+	allPorts := make([]string, 0, len(globalConfig.PortMappings)+len(portFlags))
+	allPorts = append(allPorts, globalConfig.PortMappings...)
+	allPorts = append(allPorts, portFlags...)
 	for _, p := range allPorts {
-		runArgs = append(runArgs, "-p", p)
+		pTrimmed := strings.TrimSpace(p)
+		if pTrimmed == "" {
+			// Skip empty/whitespace-only port mappings to avoid emitting `-p ""`.
+			fmt.Println("Warning: skipping empty port mapping entry")
+			continue
+		}
+		runArgs = append(runArgs, "-p", pTrimmed)
 	}
 
 	// Handle container_env_vars from config
