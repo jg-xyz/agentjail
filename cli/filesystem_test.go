@@ -236,6 +236,22 @@ func TestCopyTemplateConfigs_CopilotCreatesDir(t *testing.T) {
 	if _, err := os.Stat(copilotDir); os.IsNotExist(err) {
 		t.Error("copilot directory was not created")
 	}
+
+	for _, f := range []string{"config.json", "mcp.json"} {
+		path := filepath.Join(copilotDir, f)
+		info, err := os.Stat(path)
+		if os.IsNotExist(err) {
+			t.Errorf("copilot/%s was not created", f)
+			continue
+		}
+		if err != nil {
+			t.Errorf("unexpected error stating copilot/%s: %v", f, err)
+			continue
+		}
+		if info.Size() == 0 {
+			t.Errorf("copilot/%s is empty, expected non-empty template", f)
+		}
+	}
 }
 
 func TestCopyTemplateConfigs_OpenCodeNotEnabled(t *testing.T) {
