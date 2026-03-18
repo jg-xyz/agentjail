@@ -79,8 +79,8 @@ github_token: ""               # any PAT string, or "" to use fallback chain
 #   environment variable inside the container.
 #
 #   This option is silently ignored when GITHUB_TOKEN is already
-#   set in the host environment, so manually configured tokens
-#   always take precedence.
+#   set in the host environment; in that case the existing host
+#   GITHUB_TOKEN value is used instead of the injected one.
 #
 #   Values: true | false
 #   Default: false
