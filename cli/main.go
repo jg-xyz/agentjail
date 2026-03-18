@@ -476,13 +476,16 @@ func main() {
 	}
 
 	// Inject GITHUB_TOKEN from gh CLI auth if configured and not already set on the host
+	var injectedGitHubToken string
 	if globalConfig.InjectGhAuthToken && os.Getenv("GITHUB_TOKEN") == "" {
 		out, err := exec.Command("gh", "auth", "token").Output()
 		if err != nil {
 			fmt.Printf("Warning: failed to obtain GitHub auth token from gh CLI; GITHUB_TOKEN will not be injected: %v\n", err)
 		} else {
 			if token := strings.TrimSpace(string(out)); token != "" {
-				runArgs = append(runArgs, "-e", fmt.Sprintf("GITHUB_TOKEN=%s", token))
+				injectedGitHubToken = token
+				// Pass only the variable name to docker; value comes from the docker process environment.
+				runArgs = append(runArgs, "-e", "GITHUB_TOKEN")
 				fmt.Println("Injecting GITHUB_TOKEN from gh CLI auth token.")
 			} else {
 				fmt.Println("Warning: gh auth token returned empty output; GITHUB_TOKEN will not be injected.")
@@ -528,6 +531,10 @@ func main() {
 	fmt.Printf("Exec: docker %v\n", runArgs)
 
 	runCmd := exec.Command("docker", runArgs...)
+	// Ensure the injected GitHub token, if any, is available to docker via its environment.
+	if injectedGitHubToken != "" {
+		runCmd.Env = append(os.Environ(), fmt.Sprintf("GITHUB_TOKEN=%s", injectedGitHubToken))
+	}
 	runCmd.Stdin = os.Stdin
 	runCmd.Stdout = os.Stdout
 	runCmd.Stderr = os.Stderr
