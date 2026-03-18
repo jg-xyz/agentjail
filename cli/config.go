@@ -16,6 +16,7 @@ type GlobalConfig struct {
 	MountSystemGitconfig bool                  `yaml:"mount_system_gitconfig"`
 	MountGhConfig        bool                  `yaml:"mount_gh_config"`
 	GithubToken          string                `yaml:"github_token"`
+	InjectGhAuthToken    bool                  `yaml:"inject_gh_auth_token"`
 	PreferredAgent       string                `yaml:"preferred_agent"`
 	AgentFrameworks      AgentFrameworksConfig `yaml:"agent_frameworks"`
 	ContainerEnvVars     map[string]string     `yaml:"container_env_vars"`
@@ -125,6 +126,11 @@ mount_gh_config: true
 
 # GitHub personal access token (optional; falls back to GH_TOKEN / GITHUB_TOKEN env vars)
 github_token: ""
+
+# When true, injects GITHUB_TOKEN into the container using the fallback chain:
+# github_token config > GH_TOKEN env > GITHUB_TOKEN env > gh auth token (CLI).
+# Has no effect if GITHUB_TOKEN is already set via container_env_vars.
+inject_gh_auth_token: false
 
 # Preferred agent to auto-start with -A. Must match an enabled agent framework name
 # (e.g. "copilot" or "opencode"). Leave empty to be prompted when using -A.

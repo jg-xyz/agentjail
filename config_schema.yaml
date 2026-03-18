@@ -16,7 +16,7 @@
 #   Common values: micro | vim | nano
 #   Default: micro
 # --------------------------------------------------------------
-default_editor: micro
+default_editor: micro          # micro | vim | nano
 
 
 # --------------------------------------------------------------
@@ -28,7 +28,7 @@ default_editor: micro
 #   Supported values: zsh | bash
 #   Default: zsh
 # --------------------------------------------------------------
-default_shell: zsh
+default_shell: zsh             # zsh | bash
 
 
 # --------------------------------------------------------------
@@ -40,7 +40,7 @@ default_shell: zsh
 #   Values: true | false
 #   Default: true
 # --------------------------------------------------------------
-mount_system_gitconfig: true
+mount_system_gitconfig: true   # true | false
 
 
 # --------------------------------------------------------------
@@ -52,7 +52,7 @@ mount_system_gitconfig: true
 #   Values: true | false
 #   Default: true
 # --------------------------------------------------------------
-mount_gh_config: true
+mount_gh_config: true          # true | false
 
 
 # --------------------------------------------------------------
@@ -69,7 +69,26 @@ mount_gh_config: true
 #   Leave empty to rely on the fallback chain.
 #   Default: "" (empty — use fallback)
 # --------------------------------------------------------------
-github_token: ""
+github_token: ""               # any PAT string, or "" to use fallback chain
+
+
+# --------------------------------------------------------------
+# inject_gh_auth_token
+#   When true, ensures GITHUB_TOKEN is available inside the
+#   container by walking the standard token fallback chain:
+#     1. github_token (from this config file)
+#     2. GH_TOKEN environment variable on the host
+#     3. GITHUB_TOKEN environment variable on the host
+#     4. Output of "gh auth token" on the host (gh CLI)
+#
+#   The first non-empty value found is injected as GITHUB_TOKEN.
+#   This option has no effect when GITHUB_TOKEN is already
+#   explicitly set via container_env_vars.
+#
+#   Values: true | false
+#   Default: false
+# --------------------------------------------------------------
+inject_gh_auth_token: false    # true | false
 
 
 # --------------------------------------------------------------
@@ -81,7 +100,7 @@ github_token: ""
 #   Leave empty to be prompted interactively when using -A.
 #   Default: "" (empty — prompt on -A)
 # --------------------------------------------------------------
-preferred_agent: ""
+preferred_agent: ""            # "" (prompt on -A) | copilot | opencode
 
 
 # ============================================================
@@ -109,8 +128,8 @@ agent_frameworks:
   #     Default: [] (none)
   # ------------------------------------------------------------
   opencode:
-    enabled: false
-    plugins: []
+    enabled: false             # true | false  (requires --build to take effect)
+    plugins: []                # list of OpenCode plugin names, e.g. [my-plugin]
 
   # ------------------------------------------------------------
   # agent_frameworks.copilot
@@ -128,8 +147,8 @@ agent_frameworks:
   #     Default: [] (none)
   # ------------------------------------------------------------
   copilot:
-    enabled: true
-    plugins: []
+    enabled: true              # true | false  (requires --build to take effect)
+    plugins: []                # reserved for future use
 
 
 # ============================================================
@@ -145,12 +164,12 @@ agent_frameworks:
 #    CONT_VAR: env:HOST_VAR
 #      Reads HOST_VAR from the host environment at launch time
 #      and sets CONT_VAR to that value inside the container.
-#      If HOST_VAR is not set on the host, CONT_VAR will be
-#      an empty string.
+#      If HOST_VAR is not set on the host, CONT_VAR is not set
+#      in the container (the -e flag is omitted).
 #
 #  Default: {} (no extra environment variables)
 # ============================================================
-container_env_vars: {}
+container_env_vars: {}         # VAR: value  or  VAR: env:HOST_VAR
 
 # Examples:
 #   ANTHROPIC_API_KEY: env:ANTHROPIC_API_KEY   # forward a host API key
@@ -172,7 +191,7 @@ container_env_vars: {}
 #
 #   Default: [] (no ports published)
 # --------------------------------------------------------------
-port_mappings: []
+port_mappings: []              # "[hostIP:]hostPort:containerPort[/protocol]"
 
 # Examples:
 #   - "8080:8080"              # forward host 8080 -> container 8080

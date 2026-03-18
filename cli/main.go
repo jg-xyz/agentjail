@@ -475,6 +475,44 @@ func main() {
 		runArgs = append(runArgs, "-e", fmt.Sprintf("%s=%s", key, resolvedVal))
 	}
 
+	// Inject GITHUB_TOKEN into the container if inject_gh_auth_token is enabled.
+	// The token is resolved using the same fallback chain as GH_TOKEN injection:
+	//   github_token config > GH_TOKEN env > GITHUB_TOKEN env > gh auth token (CLI).
+	// This block is skipped entirely when GITHUB_TOKEN is already explicitly
+	// configured via container_env_vars (user config takes precedence).
+	var injectedGitHubToken string
+	if globalConfig.InjectGhAuthToken {
+		if _, alreadyConfigured := globalConfig.ContainerEnvVars["GITHUB_TOKEN"]; !alreadyConfigured {
+			// Walk the standard fallback chain to find an effective token.
+			effectiveToken := globalConfig.GithubToken
+			if effectiveToken == "" {
+				effectiveToken = os.Getenv("GH_TOKEN")
+			}
+			if effectiveToken == "" {
+				effectiveToken = os.Getenv("GITHUB_TOKEN")
+			}
+			if effectiveToken != "" {
+				// A token was resolved from the fallback chain; inject it silently.
+				injectedGitHubToken = effectiveToken
+				runArgs = append(runArgs, "-e", "GITHUB_TOKEN")
+			} else {
+				// No token found in the fallback chain; attempt to obtain one from the gh CLI.
+				out, err := exec.Command("gh", "auth", "token").Output()
+				if err != nil {
+					fmt.Printf("Warning: failed to obtain GitHub auth token from gh CLI; GITHUB_TOKEN will not be injected: %v\n", err)
+				} else {
+					if token := strings.TrimSpace(string(out)); token != "" {
+						injectedGitHubToken = token
+						runArgs = append(runArgs, "-e", "GITHUB_TOKEN")
+						fmt.Println("Injecting GITHUB_TOKEN from gh CLI auth token.")
+					} else {
+						fmt.Println("Warning: gh auth token returned empty output; GITHUB_TOKEN will not be injected.")
+					}
+				}
+			}
+		}
+	}
+
 	// Create and save metadata
 	metadata := &AgentJailMetadata{
 		ContainerName:    containerName,
@@ -513,6 +551,10 @@ func main() {
 	fmt.Printf("Exec: docker %v\n", runArgs)
 
 	runCmd := exec.Command("docker", runArgs...)
+	// Ensure the injected GitHub token, if any, is available to docker via its environment.
+	if injectedGitHubToken != "" {
+		runCmd.Env = append(os.Environ(), fmt.Sprintf("GITHUB_TOKEN=%s", injectedGitHubToken))
+	}
 	runCmd.Stdin = os.Stdin
 	runCmd.Stdout = os.Stdout
 	runCmd.Stderr = os.Stderr
