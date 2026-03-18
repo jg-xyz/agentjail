@@ -74,15 +74,16 @@ github_token: ""               # any PAT string, or "" to use fallback chain
 
 # --------------------------------------------------------------
 # inject_gh_auth_token
-#   When true, runs "gh auth token" on the host at container
-#   startup and injects the resulting token as the GITHUB_TOKEN
-#   environment variable inside the container.
+#   When true, ensures GITHUB_TOKEN is available inside the
+#   container by walking the standard token fallback chain:
+#     1. github_token (from this config file)
+#     2. GH_TOKEN environment variable on the host
+#     3. GITHUB_TOKEN environment variable on the host
+#     4. Output of "gh auth token" on the host (gh CLI)
 #
-#   This option is silently ignored when GITHUB_TOKEN is already
-#   set in the host environment; in that case no token is
-#   injected by this option. To use the host GITHUB_TOKEN inside
-#   the container, explicitly forward it via container_env_vars
-#   (for example: GITHUB_TOKEN: env:GITHUB_TOKEN).
+#   The first non-empty value found is injected as GITHUB_TOKEN.
+#   This option has no effect when GITHUB_TOKEN is already
+#   explicitly set via container_env_vars.
 #
 #   Values: true | false
 #   Default: false

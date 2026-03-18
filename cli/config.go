@@ -127,8 +127,9 @@ mount_gh_config: true
 # GitHub personal access token (optional; falls back to GH_TOKEN / GITHUB_TOKEN env vars)
 github_token: ""
 
-# When true, runs "gh auth token" on the host and injects the result as GITHUB_TOKEN
-# into the container. Ignored if GITHUB_TOKEN is already set in the host environment.
+# When true, injects GITHUB_TOKEN into the container using the fallback chain:
+# github_token config > GH_TOKEN env > GITHUB_TOKEN env > gh auth token (CLI).
+# Has no effect if GITHUB_TOKEN is already set via container_env_vars.
 inject_gh_auth_token: false
 
 # Preferred agent to auto-start with -A. Must match an enabled agent framework name
