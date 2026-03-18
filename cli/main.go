@@ -537,14 +537,18 @@ func main() {
 		if agent == "" {
 			agent = chooseEnabledAgent(globalConfig)
 		}
+		shell := *shellPtr
 		if agent != "" {
 			cmd := agentCommand(agent)
-			shell := *shellPtr
 			// Use -i so the shell rc file is sourced (enables mise PATH activation),
 			// run mise trust/install, then launch the agent, then drop into an interactive shell.
-			initCmd := fmt.Sprintf("mise trust && mise install; %s; exec %s", cmd, shell)
+			initCmd := fmt.Sprintf("mise trust --yes /project && mise install; %s; exec %s", cmd, shell)
 			runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 			fmt.Printf("Auto-starting agent: %s\n", agent)
+		} else {
+			// No agent configured, but -A was passed: trust the project mise file and drop into shell.
+			initCmd := fmt.Sprintf("mise trust --yes /project && mise install; exec %s", shell)
+			runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 		}
 	}
 
