@@ -163,8 +163,8 @@ agent_frameworks:
 #    CONT_VAR: env:HOST_VAR
 #      Reads HOST_VAR from the host environment at launch time
 #      and sets CONT_VAR to that value inside the container.
-#      If HOST_VAR is not set on the host, CONT_VAR will be
-#      an empty string.
+#      If HOST_VAR is not set on the host, CONT_VAR is not set
+#      in the container (the -e flag is omitted).
 #
 #  Default: {} (no extra environment variables)
 # ============================================================
