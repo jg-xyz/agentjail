@@ -49,9 +49,11 @@ func TestGetContainerForDirectory_EmptyOutput(t *testing.T) {
 	// We can't mock exec.Command easily, but we can verify the parsing logic
 	// handles empty/malformed lines gracefully by testing the directory-not-found path
 	// with a directory that won't appear in any real container mounts.
-	_, err := getContainerForDirectory("/nonexistent/unique/test/path/xyz123")
-	// We expect either an error (docker not available) or an empty container name
-	_ = err // either outcome is acceptable in CI without docker
+	container, err := getContainerForDirectory("/nonexistent/unique/test/path/xyz123")
+	// We expect either an error (docker not available) or an empty container name.
+	if err == nil && container != "" {
+		t.Errorf("expected empty container name for nonexistent directory, got %q", container)
+	}
 }
 
 func TestImageExists_UnknownImage(t *testing.T) {
