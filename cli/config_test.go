@@ -196,29 +196,29 @@ if cfg.PortMappings[0] != "8080:8080" {
 t.Errorf("PortMappings[0]: got %q, want %q", cfg.PortMappings[0], "8080:8080")
 }
 if cfg.PortMappings[1] != "127.0.0.1:3000:3000" {
-t.Errorf("PortMappings[1]: got %q, want %q", cfg.PortMappings[1], "127.0.0.1:3000:3000")
-}
-if cfg.PortMappings[2] != "5432:5432/tcp" {
-t.Errorf("PortMappings[2]: got %q, want %q", cfg.PortMappings[2], "5432:5432/tcp")
-}
+		t.Errorf("PortMappings[1]: got %q, want %q", cfg.PortMappings[1], "127.0.0.1:3000:3000")
+	}
+	if cfg.PortMappings[2] != "5432:5432/tcp" {
+		t.Errorf("PortMappings[2]: got %q, want %q", cfg.PortMappings[2], "5432:5432/tcp")
+	}
 }
 
 func TestLoadGlobalConfigFromPath_PortMappingsEmpty(t *testing.T) {
-dir := t.TempDir()
-path := filepath.Join(dir, "config.yaml")
-content := `
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := `
 default_editor: micro
 default_shell: zsh
 `
-if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-t.Fatal(err)
-}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
 
-cfg, err := loadGlobalConfigFromPath(path)
-if err != nil {
-t.Fatalf("unexpected error: %v", err)
-}
-if len(cfg.PortMappings) != 0 {
-t.Errorf("expected empty port mappings, got %v", cfg.PortMappings)
-}
+	cfg, err := loadGlobalConfigFromPath(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.PortMappings) != 0 {
+		t.Errorf("expected empty port mappings, got %v", cfg.PortMappings)
+	}
 }
