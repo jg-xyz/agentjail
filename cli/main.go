@@ -13,6 +13,20 @@ import (
 	"golang.org/x/term"
 )
 
+// runWithTerminalRestore runs cmd and restores the terminal state and console
+// code pages (on Windows) after it exits, regardless of success or failure.
+func runWithTerminalRestore(cmd *exec.Cmd) error {
+	savedState, _ := term.GetState(int(os.Stdin.Fd()))
+	cpIn, cpOut := saveConsoleCP()
+	defer func() {
+		if savedState != nil {
+			_ = term.Restore(int(os.Stdin.Fd()), savedState)
+		}
+		restoreConsoleCP(cpIn, cpOut)
+	}()
+	return cmd.Run()
+}
+
 // arrayFlags allows setting multiple flags of the same name.
 type arrayFlags []string
 
@@ -134,13 +148,7 @@ func main() {
 			execCmd.Stdout = os.Stdout
 			execCmd.Stderr = os.Stderr
 
-			savedState, _ := term.GetState(int(os.Stdin.Fd()))
-			cpIn, cpOut := saveConsoleCP()
-			err = execCmd.Run()
-			if savedState != nil {
-				_ = term.Restore(int(os.Stdin.Fd()), savedState)
-			}
-			restoreConsoleCP(cpIn, cpOut)
+			err = runWithTerminalRestore(execCmd)
 			if err != nil {
 				fmt.Printf("Error executing into container: %v\n", err)
 				os.Exit(1)
@@ -573,13 +581,7 @@ func main() {
 	runCmd.Stdout = os.Stdout
 	runCmd.Stderr = os.Stderr
 
-	savedState, _ := term.GetState(int(os.Stdin.Fd()))
-	cpIn, cpOut := saveConsoleCP()
-	err = runCmd.Run()
-	if savedState != nil {
-		_ = term.Restore(int(os.Stdin.Fd()), savedState)
-	}
-	restoreConsoleCP(cpIn, cpOut)
+	err = runWithTerminalRestore(runCmd)
 	if err != nil {
 		fmt.Printf("\nError running Docker container: %v\n", err)
 		if exitErr, ok := err.(*exec.ExitError); ok {
