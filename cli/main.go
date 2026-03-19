@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 )
 
 // arrayFlags allows setting multiple flags of the same name.
@@ -132,7 +134,14 @@ func main() {
 			execCmd.Stdout = os.Stdout
 			execCmd.Stderr = os.Stderr
 
-			if err := execCmd.Run(); err != nil {
+			savedState, _ := term.GetState(int(os.Stdin.Fd()))
+			cpIn, cpOut := saveConsoleCP()
+			err = execCmd.Run()
+			if savedState != nil {
+				_ = term.Restore(int(os.Stdin.Fd()), savedState)
+			}
+			restoreConsoleCP(cpIn, cpOut)
+			if err != nil {
 				fmt.Printf("Error executing into container: %v\n", err)
 				os.Exit(1)
 			}
@@ -322,6 +331,7 @@ func main() {
 		"-e", fmt.Sprintf("SHELL=%s", *shellPtr),
 		"-e", fmt.Sprintf("CONTAINER_ID=%s", containerName),
 		"-e", fmt.Sprintf("HISTFILE=/root/.agentjail/%s_history", *shellPtr),
+		"-e", fmt.Sprintf("AGENTJAIL_HOST_PATH=%s", absDir),
 	)
 
 	// Mount rovr config (always)
@@ -563,7 +573,14 @@ func main() {
 	runCmd.Stdout = os.Stdout
 	runCmd.Stderr = os.Stderr
 
-	if err := runCmd.Run(); err != nil {
+	savedState, _ := term.GetState(int(os.Stdin.Fd()))
+	cpIn, cpOut := saveConsoleCP()
+	err = runCmd.Run()
+	if savedState != nil {
+		_ = term.Restore(int(os.Stdin.Fd()), savedState)
+	}
+	restoreConsoleCP(cpIn, cpOut)
+	if err != nil {
 		fmt.Printf("\nError running Docker container: %v\n", err)
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			fmt.Printf("Container exited with code: %d\n", exitErr.ExitCode())
