@@ -9,7 +9,23 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 )
+
+// runWithTerminalRestore runs cmd and restores the terminal state and console
+// code pages (on Windows) after it exits, regardless of success or failure.
+func runWithTerminalRestore(cmd *exec.Cmd) error {
+	savedState, _ := term.GetState(int(os.Stdin.Fd()))
+	cpIn, cpOut := saveConsoleCP()
+	defer func() {
+		if savedState != nil {
+			_ = term.Restore(int(os.Stdin.Fd()), savedState)
+		}
+		restoreConsoleCP(cpIn, cpOut)
+	}()
+	return cmd.Run()
+}
 
 // arrayFlags allows setting multiple flags of the same name.
 type arrayFlags []string
@@ -132,7 +148,8 @@ func main() {
 			execCmd.Stdout = os.Stdout
 			execCmd.Stderr = os.Stderr
 
-			if err := execCmd.Run(); err != nil {
+			err = runWithTerminalRestore(execCmd)
+			if err != nil {
 				fmt.Printf("Error executing into container: %v\n", err)
 				os.Exit(1)
 			}
@@ -322,6 +339,7 @@ func main() {
 		"-e", fmt.Sprintf("SHELL=%s", *shellPtr),
 		"-e", fmt.Sprintf("CONTAINER_ID=%s", containerName),
 		"-e", fmt.Sprintf("HISTFILE=/root/.agentjail/%s_history", *shellPtr),
+		"-e", fmt.Sprintf("AGENTJAIL_HOST_PATH=%s", absDir),
 	)
 
 	// Mount rovr config (always)
@@ -537,14 +555,18 @@ func main() {
 		if agent == "" {
 			agent = chooseEnabledAgent(globalConfig)
 		}
+		shell := *shellPtr
 		if agent != "" {
 			cmd := agentCommand(agent)
-			shell := *shellPtr
 			// Use -i so the shell rc file is sourced (enables mise PATH activation),
 			// run mise trust/install, then launch the agent, then drop into an interactive shell.
-			initCmd := fmt.Sprintf("mise trust && mise install; %s; exec %s", cmd, shell)
+			initCmd := fmt.Sprintf("mise trust --yes /project && mise install; %s; exec %s", cmd, shell)
 			runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 			fmt.Printf("Auto-starting agent: %s\n", agent)
+		} else {
+			// No agent configured, but -A was passed: trust the project mise file and drop into shell.
+			initCmd := fmt.Sprintf("mise trust --yes /project && mise install; exec %s", shell)
+			runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 		}
 	}
 
@@ -559,7 +581,8 @@ func main() {
 	runCmd.Stdout = os.Stdout
 	runCmd.Stderr = os.Stderr
 
-	if err := runCmd.Run(); err != nil {
+	err = runWithTerminalRestore(runCmd)
+	if err != nil {
 		fmt.Printf("\nError running Docker container: %v\n", err)
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			fmt.Printf("Container exited with code: %d\n", exitErr.ExitCode())
