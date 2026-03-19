@@ -126,4 +126,4 @@ WORKDIR /project
 RUN [ ! -f /project/mise.toml ] && touch /project/mise.toml
 
 # Default command
-CMD mise trust --yes && mise install || rich "No mise file detected" --print --style 'dark_goldenrod' && ${SHELL} && cd /project
+CMD mise trust && mise install || rich "No mise file detected" --print --style 'dark_goldenrod' && ${SHELL} && cd /project
