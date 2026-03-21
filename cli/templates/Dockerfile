@@ -4,6 +4,7 @@ ARG SHELL="bash"
 ARG EDITOR="micro"
 ARG USE_COPILOT="false"
 ARG USE_OPENCODE="false"
+ARG USE_CLAUDE_CODE="false"
 ARG HOSTNAME="agentjail"
 ARG STARSHIP_VERSION="1.24.2"
 ENV STARSHIP_CONFIG="/root/.config/starship.toml"
@@ -77,6 +78,9 @@ RUN [ "${USE_OPENCODE}" = "true" ] && curl -LsSf https://opencode.com/install.sh
 # install copilot
 RUN [ "${USE_COPILOT}" = "true" ] && curl -fsSL https://gh.io/copilot-install | bash || echo "Not installing copilot"
 
+# install claude code
+RUN [ "${USE_CLAUDE_CODE}" = "true" ] && mise x -- npm install -g @anthropic-ai/claude-code || echo "Not installing claude code"
+
 # configure MOTD
 RUN . /etc/os-release && \
     case "$ID" in \
@@ -97,6 +101,9 @@ RUN . /etc/os-release && \
     fi && \
     if [ "${USE_OPENCODE}" = "true" ]; then \
       AVAILABLE_AGENTS="${AVAILABLE_AGENTS} [bold green]OpenCode[/bold green]"; \
+    fi && \
+    if [ "${USE_CLAUDE_CODE}" = "true" ]; then \
+      AVAILABLE_AGENTS="${AVAILABLE_AGENTS} [bold orange3]Claude Code[/bold orange3]"; \
     fi && \
     AVAILABLE_EDITORS="Available Editors: vim, nano, micro (Primary: [bold blue]${EDITOR}[/bold blue])" && \
     ALIASES="Available Aliases: [blue][bold]\"files\"[/bold]: [green]rovr[/green], [bold]\"edit\"[/bold]: [green]${EDITOR}[/green][/blue]" && \

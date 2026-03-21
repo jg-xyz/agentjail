@@ -245,6 +245,7 @@ func main() {
 			"--build-arg", fmt.Sprintf("EDITOR=%s", *editorPtr),
 			"--build-arg", fmt.Sprintf("USE_OPENCODE=%t", globalConfig.AgentFrameworks.OpenCode.Enabled),
 			"--build-arg", fmt.Sprintf("USE_COPILOT=%t", globalConfig.AgentFrameworks.Copilot.Enabled),
+			"--build-arg", fmt.Sprintf("USE_CLAUDE_CODE=%t", globalConfig.AgentFrameworks.ClaudeCode.Enabled),
 			"--build-arg", "HOSTNAME=agentjail",
 		}
 
@@ -411,6 +412,34 @@ func main() {
 		if token != "" {
 			runArgs = append(runArgs, "-e", fmt.Sprintf("GH_TOKEN=%s", token))
 			fmt.Println("Passing GH_TOKEN to container for Copilot auth.")
+		}
+	}
+
+	// Mount claude code config if enabled
+	if globalConfig.AgentFrameworks.ClaudeCode.Enabled {
+		usr, _ := user.Current()
+		hostClaudePath := filepath.Join(usr.HomeDir, ".claude")
+		if _, err := os.Stat(hostClaudePath); err == nil {
+			claudeMount := fmt.Sprintf("%s:/root/.claude", hostClaudePath)
+			runArgs = append(runArgs, "-v", claudeMount)
+			volumes = append(volumes, claudeMount)
+			fmt.Println("Mounting host ~/.claude for Claude Code auth.")
+		}
+		hostClaudeJSON := filepath.Join(usr.HomeDir, ".claude.json")
+		if _, err := os.Stat(hostClaudeJSON); err == nil {
+			claudeJSONMount := fmt.Sprintf("%s:/root/.claude.json", hostClaudeJSON)
+			runArgs = append(runArgs, "-v", claudeJSONMount)
+			volumes = append(volumes, claudeJSONMount)
+		}
+
+		// Inject ANTHROPIC_API_KEY: config field takes priority, then host env var.
+		apiKey := globalConfig.AnthropicApiKey
+		if apiKey == "" {
+			apiKey = os.Getenv("ANTHROPIC_API_KEY")
+		}
+		if apiKey != "" {
+			runArgs = append(runArgs, "-e", fmt.Sprintf("ANTHROPIC_API_KEY=%s", apiKey))
+			fmt.Println("Passing ANTHROPIC_API_KEY to container for Claude Code.")
 		}
 	}
 

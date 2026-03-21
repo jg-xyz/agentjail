@@ -17,6 +17,7 @@ type GlobalConfig struct {
 	MountGhConfig        bool                  `yaml:"mount_gh_config"`
 	GithubToken          string                `yaml:"github_token"`
 	InjectGhAuthToken    bool                  `yaml:"inject_gh_auth_token"`
+	AnthropicApiKey      string                `yaml:"anthropic_api_key"`
 	PreferredAgent       string                `yaml:"preferred_agent"`
 	AgentFrameworks      AgentFrameworksConfig `yaml:"agent_frameworks"`
 	ContainerEnvVars     map[string]string     `yaml:"container_env_vars"`
@@ -24,8 +25,9 @@ type GlobalConfig struct {
 }
 
 type AgentFrameworksConfig struct {
-	OpenCode FrameworkConfig `yaml:"opencode"`
-	Copilot  FrameworkConfig `yaml:"copilot"`
+	OpenCode   FrameworkConfig `yaml:"opencode"`
+	Copilot    FrameworkConfig `yaml:"copilot"`
+	ClaudeCode FrameworkConfig `yaml:"claude_code"`
 }
 
 type FrameworkConfig struct {
@@ -136,6 +138,9 @@ inject_gh_auth_token: false
 # (e.g. "copilot" or "opencode"). Leave empty to be prompted when using -A.
 preferred_agent: ""
 
+# Anthropic API key for Claude Code (optional; falls back to ANTHROPIC_API_KEY env var)
+anthropic_api_key: ""
+
 # Agent framework settings
 agent_frameworks:
   opencode:
@@ -143,6 +148,9 @@ agent_frameworks:
     plugins: []
   copilot:
     enabled: true
+    plugins: []
+  claude_code:
+    enabled: false
     plugins: []
 
 # Environment variables to inject into the container.
