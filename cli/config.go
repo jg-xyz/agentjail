@@ -19,9 +19,36 @@ type GlobalConfig struct {
 	InjectGhAuthToken    bool                  `yaml:"inject_gh_auth_token"`
 	AnthropicApiKey      string                `yaml:"anthropic_api_key"`
 	PreferredAgent       string                `yaml:"preferred_agent"`
+	UseZellij            *bool                 `yaml:"use_zellij"`
+	ZellijTheme          string                `yaml:"zellij_theme"`
+	FileBrowser          string                `yaml:"file_browser"`
 	AgentFrameworks      AgentFrameworksConfig `yaml:"agent_frameworks"`
 	ContainerEnvVars     map[string]string     `yaml:"container_env_vars"`
 	PortMappings         []string              `yaml:"port_mappings"`
+}
+
+// ZellijEnabled reports whether zellij should be used as the multiplexer.
+// Defaults to true when use_zellij is absent from the config file.
+func (c *GlobalConfig) ZellijEnabled() bool {
+	return c.UseZellij == nil || *c.UseZellij
+}
+
+// ZellijThemeOrDefault returns the configured zellij theme, defaulting to
+// "tokyo-night-storm" when zellij_theme is absent from the config file.
+func (c *GlobalConfig) ZellijThemeOrDefault() string {
+	if c.ZellijTheme != "" {
+		return c.ZellijTheme
+	}
+	return "tokyo-night-storm"
+}
+
+// FileBrowserCmd returns the command used to launch the file browser tab.
+// Defaults to "rovr" when file_browser is absent from the config file.
+func (c *GlobalConfig) FileBrowserCmd() string {
+	if c.FileBrowser != "" {
+		return c.FileBrowser
+	}
+	return "rovr"
 }
 
 type AgentFrameworksConfig struct {
@@ -50,11 +77,13 @@ func loadGlobalConfig() (*GlobalConfig, error) {
 	}
 
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		trueVal := true
 		config := &GlobalConfig{
 			DefaultEditor:        "micro",
 			DefaultShell:         "zsh",
 			MountSystemGitconfig: true,
 			MountGhConfig:        true,
+			UseZellij:            &trueVal,
 			AgentFrameworks: AgentFrameworksConfig{
 				Copilot: FrameworkConfig{Enabled: true},
 			},
@@ -137,6 +166,22 @@ inject_gh_auth_token: false
 # Preferred agent to auto-start with -A. Must match an enabled agent framework name
 # (e.g. "copilot" or "opencode"). Leave empty to be prompted when using -A.
 preferred_agent: ""
+
+# Launch the container inside a zellij multiplexer with three tabs:
+#   tab 1 — preferred agent (auto-starts on first prompt)
+#   tab 2 — plain terminal
+#   tab 3 — file browser (auto-starts on first prompt)
+# Set to false to drop directly into a shell instead.
+use_zellij: true
+
+# Zellij color theme. Any built-in zellij theme name is accepted, e.g.:
+#   tokyo-night-storm (default), tokyo-night, tokyo-night-light,
+#   catppuccin-mocha, gruvbox-dark, nord, one-half-dark
+zellij_theme: tokyo-night-storm
+
+# Command used for the file browser tab when use_zellij is true.
+# Defaults to "rovr". Set to "yazi" or any other terminal file manager to swap it out.
+file_browser: rovr
 
 # Anthropic API key for Claude Code (optional; falls back to ANTHROPIC_API_KEY env var)
 anthropic_api_key: ""

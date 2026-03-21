@@ -160,6 +160,7 @@ func TestPrintCleanConfig_ContainsExpectedKeys(t *testing.T) {
 		"github_token",
 		"inject_gh_auth_token",
 		"preferred_agent",
+		"zellij_theme",
 		"agent_frameworks",
 		"container_env_vars",
 		"port_mappings",
@@ -243,6 +244,62 @@ inject_gh_auth_token: true
 	}
 	if !cfg.InjectGhAuthToken {
 		t.Error("InjectGhAuthToken: expected true")
+	}
+}
+
+func TestZellijEnabled(t *testing.T) {
+	trueVal := true
+	falseVal := false
+	cases := []struct {
+		name      string
+		useZellij *bool
+		want      bool
+	}{
+		{"nil defaults to true", nil, true},
+		{"explicit true", &trueVal, true},
+		{"explicit false", &falseVal, false},
+	}
+	for _, c := range cases {
+		cfg := &GlobalConfig{UseZellij: c.useZellij}
+		if got := cfg.ZellijEnabled(); got != c.want {
+			t.Errorf("%s: ZellijEnabled() = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestZellijThemeOrDefault(t *testing.T) {
+	cases := []struct {
+		name  string
+		theme string
+		want  string
+	}{
+		{"empty defaults to tokyo-night-storm", "", "tokyo-night-storm"},
+		{"custom theme returned as-is", "catppuccin-mocha", "catppuccin-mocha"},
+		{"another custom theme", "gruvbox-dark", "gruvbox-dark"},
+	}
+	for _, c := range cases {
+		cfg := &GlobalConfig{ZellijTheme: c.theme}
+		if got := cfg.ZellijThemeOrDefault(); got != c.want {
+			t.Errorf("%s: ZellijThemeOrDefault() = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestFileBrowserCmd(t *testing.T) {
+	cases := []struct {
+		name        string
+		fileBrowser string
+		want        string
+	}{
+		{"empty defaults to rovr", "", "rovr"},
+		{"custom value returned as-is", "yazi", "yazi"},
+		{"another custom value", "ranger", "ranger"},
+	}
+	for _, c := range cases {
+		cfg := &GlobalConfig{FileBrowser: c.fileBrowser}
+		if got := cfg.FileBrowserCmd(); got != c.want {
+			t.Errorf("%s: FileBrowserCmd() = %q, want %q", c.name, got, c.want)
+		}
 	}
 }
 

@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"fmt"
+	"os"
+	"testing"
+)
 
 func TestEnabledAgents_NoneEnabled(t *testing.T) {
 	cfg := &GlobalConfig{}
@@ -118,5 +122,74 @@ func TestChooseEnabledAgent_SingleAgent(t *testing.T) {
 	}
 	if got := chooseEnabledAgent(cfg); got != "copilot" {
 		t.Errorf("expected copilot, got %q", got)
+	}
+}
+
+func withStdin(t *testing.T, input string, fn func()) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Fprint(w, input)
+	w.Close()
+	old := os.Stdin
+	os.Stdin = r
+	defer func() { os.Stdin = old }()
+	fn()
+}
+
+func multiAgentCfg() *GlobalConfig {
+	return &GlobalConfig{
+		AgentFrameworks: AgentFrameworksConfig{
+			Copilot:  FrameworkConfig{Enabled: true},
+			OpenCode: FrameworkConfig{Enabled: true},
+		},
+	}
+}
+
+func TestChooseEnabledAgent_MultipleAgents_ValidChoice(t *testing.T) {
+	var got string
+	withStdin(t, "2\n", func() {
+		got = chooseEnabledAgent(multiAgentCfg())
+	})
+	if got != "opencode" {
+		t.Errorf("expected opencode (choice 2), got %q", got)
+	}
+}
+
+func TestChooseEnabledAgent_MultipleAgents_OutOfRange(t *testing.T) {
+	var got string
+	withStdin(t, "99\n", func() {
+		got = chooseEnabledAgent(multiAgentCfg())
+	})
+	if got != "copilot" {
+		t.Errorf("expected fallback to copilot for out-of-range input, got %q", got)
+	}
+}
+
+func TestChooseEnabledAgent_MultipleAgents_NonNumeric(t *testing.T) {
+	var got string
+	withStdin(t, "abc\n", func() {
+		got = chooseEnabledAgent(multiAgentCfg())
+	})
+	if got != "copilot" {
+		t.Errorf("expected fallback to copilot for non-numeric input, got %q", got)
+	}
+}
+
+func TestChooseEnabledAgent_MultipleAgents_EOF(t *testing.T) {
+	var got string
+	withStdin(t, "", func() {
+		got = chooseEnabledAgent(multiAgentCfg())
+	})
+	if got != "copilot" {
+		t.Errorf("expected fallback to copilot on EOF, got %q", got)
+	}
+}
+
+func TestAgentCommand_ClaudeCodeAlias(t *testing.T) {
+	if got := agentCommand("claude_code"); got != "claude" {
+		t.Errorf("agentCommand(claude_code) = %q, want %q", got, "claude")
 	}
 }

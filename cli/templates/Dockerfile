@@ -54,6 +54,7 @@ RUN mise use -g \
     ripgrep \
     television \
     yq \
+    zellij \
     pipx:rich-cli \
     pipx:rovr
 
@@ -67,6 +68,16 @@ RUN echo "alias files='rovr'" >> ~/.${SHELL}rc && \
     echo "alias edit='${EDITOR}'" >> ~/.${SHELL}rc && \
     echo "alias /exit=exit" >> ~/.${SHELL}rc && \
     echo "\n\n" >> ~/.${SHELL}rc
+
+# When running inside a zellij session, override 'exit' to quit zellij
+# (which also exits the container since zellij is launched with exec).
+# The ZELLIJ env var is set by zellij itself, so this is a no-op outside it.
+RUN cat >> ~/.${SHELL}rc <<'ZELLIJ_EXIT_HOOK'
+
+if [ -n "${ZELLIJ}" ]; then
+    alias exit='zellij action quit'
+fi
+ZELLIJ_EXIT_HOOK
 
 # configure prompt
 #RUN starship init ${SHELL} >> ~/.${SHELL}rc && \
@@ -129,6 +140,24 @@ RUN wget https://github.com/starship/starship/releases/download/v${STARSHIP_VERS
     printf "\nexport STARSHIP_CONFIG=${STARSHIP_CONFIG}\neval \"\$(starship init bash)\"\n" >> ~/.bashrc && \
     printf "\nexport STARSHIP_CONFIG=${STARSHIP_CONFIG}\neval \"\$(starship init zsh)\"\n" >> ~/.zshrc
 
+
+# AgentJail tab launcher: runs AGENTJAIL_TAB_CMD on the first prompt in the tab.
+# AGENTJAIL_TAB_CMD is exported by per-tab wrapper scripts written at launch time.
+# Using precmd_functions guarantees the hook runs after the full .zshrc is sourced
+# (so mise, starship, and aliases are all active when the program starts).
+RUN cat >> ~/.zshrc <<'AGENTJAIL_HOOK'
+
+# AgentJail tab launcher
+if [[ -n "${AGENTJAIL_TAB_CMD}" ]]; then
+    _agentjail_tab_cmd="${AGENTJAIL_TAB_CMD}"
+    unset AGENTJAIL_TAB_CMD
+    function _agentjail_launch_once() {
+        precmd_functions=(${precmd_functions:#_agentjail_launch_once})
+        eval "${_agentjail_tab_cmd}"
+    }
+    precmd_functions+=(_agentjail_launch_once)
+fi
+AGENTJAIL_HOOK
 
 ENV HOSTNAME=${HOSTNAME}
 
