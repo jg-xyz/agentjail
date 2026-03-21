@@ -51,6 +51,35 @@ func TestEnabledAgents_BothEnabled(t *testing.T) {
 	}
 }
 
+func TestEnabledAgents_ClaudeCodeOnly(t *testing.T) {
+	cfg := &GlobalConfig{
+		AgentFrameworks: AgentFrameworksConfig{
+			ClaudeCode: FrameworkConfig{Enabled: true},
+		},
+	}
+	agents := enabledAgents(cfg)
+	if len(agents) != 1 || agents[0] != "claude" {
+		t.Errorf("expected [claude], got %v", agents)
+	}
+}
+
+func TestEnabledAgents_AllThreeEnabled(t *testing.T) {
+	cfg := &GlobalConfig{
+		AgentFrameworks: AgentFrameworksConfig{
+			Copilot:    FrameworkConfig{Enabled: true},
+			OpenCode:   FrameworkConfig{Enabled: true},
+			ClaudeCode: FrameworkConfig{Enabled: true},
+		},
+	}
+	agents := enabledAgents(cfg)
+	if len(agents) != 3 {
+		t.Errorf("expected 3 agents, got %d: %v", len(agents), agents)
+	}
+	if agents[0] != "copilot" || agents[1] != "opencode" || agents[2] != "claude" {
+		t.Errorf("unexpected order: %v", agents)
+	}
+}
+
 func TestAgentCommand_Known(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -58,6 +87,7 @@ func TestAgentCommand_Known(t *testing.T) {
 	}{
 		{"opencode", "opencode"},
 		{"copilot", "copilot"},
+		{"claude", "claude"},
 	}
 	for _, tt := range tests {
 		if got := agentCommand(tt.input); got != tt.expected {

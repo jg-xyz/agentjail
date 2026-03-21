@@ -11,6 +11,9 @@ func enabledAgents(config *GlobalConfig) []string {
 	if config.AgentFrameworks.OpenCode.Enabled {
 		agents = append(agents, "opencode")
 	}
+	if config.AgentFrameworks.ClaudeCode.Enabled {
+		agents = append(agents, "claude")
+	}
 	return agents
 }
 
@@ -21,6 +24,8 @@ func agentCommand(name string) string {
 		return "opencode"
 	case "copilot":
 		return "copilot"
+	case "claude", "claude_code":
+		return "claude"
 	default:
 		return name
 	}

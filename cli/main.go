@@ -245,6 +245,7 @@ func main() {
 			"--build-arg", fmt.Sprintf("EDITOR=%s", *editorPtr),
 			"--build-arg", fmt.Sprintf("USE_OPENCODE=%t", globalConfig.AgentFrameworks.OpenCode.Enabled),
 			"--build-arg", fmt.Sprintf("USE_COPILOT=%t", globalConfig.AgentFrameworks.Copilot.Enabled),
+			"--build-arg", fmt.Sprintf("USE_CLAUDE_CODE=%t", globalConfig.AgentFrameworks.ClaudeCode.Enabled),
 			"--build-arg", "HOSTNAME=agentjail",
 		}
 
@@ -411,6 +412,44 @@ func main() {
 		if token != "" {
 			runArgs = append(runArgs, "-e", fmt.Sprintf("GH_TOKEN=%s", token))
 			fmt.Println("Passing GH_TOKEN to container for Copilot auth.")
+		}
+	}
+
+	// Mount claude code config if enabled
+	if globalConfig.AgentFrameworks.ClaudeCode.Enabled {
+		usr, err := user.Current()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Warning: could not determine current user; skipping Claude Code host mounts:", err)
+		} else {
+			hostClaudePath := filepath.Join(usr.HomeDir, ".claude")
+			if _, err := os.Stat(hostClaudePath); err == nil {
+				claudeMount := fmt.Sprintf("%s:/root/.claude", hostClaudePath)
+				runArgs = append(runArgs, "-v", claudeMount)
+				volumes = append(volumes, claudeMount)
+				fmt.Println("Mounting host ~/.claude for Claude Code auth.")
+			}
+			hostClaudeJSON := filepath.Join(usr.HomeDir, ".claude.json")
+			if _, err := os.Stat(hostClaudeJSON); err == nil {
+				claudeJSONMount := fmt.Sprintf("%s:/root/.claude.json", hostClaudeJSON)
+				runArgs = append(runArgs, "-v", claudeJSONMount)
+				volumes = append(volumes, claudeJSONMount)
+			}
+		}
+
+		// Inject ANTHROPIC_API_KEY: config field takes priority, then host env var.
+		// Skip if already configured via container_env_vars (user config takes precedence).
+		if _, alreadyConfigured := globalConfig.ContainerEnvVars["ANTHROPIC_API_KEY"]; !alreadyConfigured {
+			apiKey := globalConfig.AnthropicApiKey
+			if apiKey == "" {
+				apiKey = os.Getenv("ANTHROPIC_API_KEY")
+			}
+			if apiKey != "" {
+				// Avoid exposing the key via command-line args (process listings, debug output).
+				// Set in the process env and let Docker inherit it via a valueless -e flag.
+				os.Setenv("ANTHROPIC_API_KEY", apiKey)
+				runArgs = append(runArgs, "-e", "ANTHROPIC_API_KEY")
+				fmt.Println("Passing ANTHROPIC_API_KEY to container for Claude Code.")
+			}
 		}
 	}
 
