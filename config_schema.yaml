@@ -100,7 +100,7 @@ inject_gh_auth_token: false    # true | false
 #   Leave empty to be prompted interactively when using -A.
 #   Default: "" (empty — prompt on -A)
 # --------------------------------------------------------------
-preferred_agent: ""            # "" (prompt on -A) | copilot | opencode
+preferred_agent: ""            # "" (prompt on -A) | copilot | opencode | claude
 
 
 # ============================================================
@@ -148,6 +148,22 @@ agent_frameworks:
   # ------------------------------------------------------------
   copilot:
     enabled: true              # true | false  (requires --build to take effect)
+    plugins: []                # reserved for future use
+
+  # ------------------------------------------------------------
+  # agent_frameworks.claude
+  #   Claude Code — Anthropic's AI coding CLI.
+  #   Homepage: https://claude.ai/code
+  #
+  #   enabled
+  #     Install claude in the container image and mount
+  #     ~/.claude and ~/.claude.json from the host for auth
+  #     persistence. Also injects ANTHROPIC_API_KEY if set.
+  #     Values: true | false
+  #     Default: false
+  # ------------------------------------------------------------
+  claude:
+    enabled: false             # true | false  (requires --build to take effect)
     plugins: []                # reserved for future use
 
 

@@ -79,7 +79,12 @@ RUN [ "${USE_OPENCODE}" = "true" ] && curl -LsSf https://opencode.com/install.sh
 RUN [ "${USE_COPILOT}" = "true" ] && curl -fsSL https://gh.io/copilot-install | bash || echo "Not installing copilot"
 
 # install claude code
-RUN [ "${USE_CLAUDE_CODE}" = "true" ] && mise x -- npm install -g @anthropic-ai/claude-code || echo "Not installing claude code"
+RUN if [ "${USE_CLAUDE_CODE}" = "true" ]; then \
+    mise x -- npm install -g @anthropic-ai/claude-code && \
+    ln -sf "$(mise x -- npm prefix -g)/bin/claude" /usr/local/bin/claude; \
+else \
+    echo "Not installing claude code"; \
+fi
 
 # configure MOTD
 RUN . /etc/os-release && \

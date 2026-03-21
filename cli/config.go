@@ -27,7 +27,7 @@ type GlobalConfig struct {
 type AgentFrameworksConfig struct {
 	OpenCode   FrameworkConfig `yaml:"opencode"`
 	Copilot    FrameworkConfig `yaml:"copilot"`
-	ClaudeCode FrameworkConfig `yaml:"claude_code"`
+	ClaudeCode FrameworkConfig `yaml:"claude"`
 }
 
 type FrameworkConfig struct {
@@ -149,7 +149,7 @@ agent_frameworks:
   copilot:
     enabled: true
     plugins: []
-  claude_code:
+  claude:
     enabled: false
     plugins: []
 
