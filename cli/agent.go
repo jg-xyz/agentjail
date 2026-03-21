@@ -24,7 +24,7 @@ func agentCommand(name string) string {
 		return "opencode"
 	case "copilot":
 		return "copilot"
-	case "claude":
+	case "claude", "claude_code":
 		return "claude"
 	default:
 		return name

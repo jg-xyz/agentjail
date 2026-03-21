@@ -417,29 +417,39 @@ func main() {
 
 	// Mount claude code config if enabled
 	if globalConfig.AgentFrameworks.ClaudeCode.Enabled {
-		usr, _ := user.Current()
-		hostClaudePath := filepath.Join(usr.HomeDir, ".claude")
-		if _, err := os.Stat(hostClaudePath); err == nil {
-			claudeMount := fmt.Sprintf("%s:/root/.claude", hostClaudePath)
-			runArgs = append(runArgs, "-v", claudeMount)
-			volumes = append(volumes, claudeMount)
-			fmt.Println("Mounting host ~/.claude for Claude Code auth.")
-		}
-		hostClaudeJSON := filepath.Join(usr.HomeDir, ".claude.json")
-		if _, err := os.Stat(hostClaudeJSON); err == nil {
-			claudeJSONMount := fmt.Sprintf("%s:/root/.claude.json", hostClaudeJSON)
-			runArgs = append(runArgs, "-v", claudeJSONMount)
-			volumes = append(volumes, claudeJSONMount)
+		usr, err := user.Current()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Warning: could not determine current user; skipping Claude Code host mounts:", err)
+		} else {
+			hostClaudePath := filepath.Join(usr.HomeDir, ".claude")
+			if _, err := os.Stat(hostClaudePath); err == nil {
+				claudeMount := fmt.Sprintf("%s:/root/.claude", hostClaudePath)
+				runArgs = append(runArgs, "-v", claudeMount)
+				volumes = append(volumes, claudeMount)
+				fmt.Println("Mounting host ~/.claude for Claude Code auth.")
+			}
+			hostClaudeJSON := filepath.Join(usr.HomeDir, ".claude.json")
+			if _, err := os.Stat(hostClaudeJSON); err == nil {
+				claudeJSONMount := fmt.Sprintf("%s:/root/.claude.json", hostClaudeJSON)
+				runArgs = append(runArgs, "-v", claudeJSONMount)
+				volumes = append(volumes, claudeJSONMount)
+			}
 		}
 
 		// Inject ANTHROPIC_API_KEY: config field takes priority, then host env var.
-		apiKey := globalConfig.AnthropicApiKey
-		if apiKey == "" {
-			apiKey = os.Getenv("ANTHROPIC_API_KEY")
-		}
-		if apiKey != "" {
-			runArgs = append(runArgs, "-e", fmt.Sprintf("ANTHROPIC_API_KEY=%s", apiKey))
-			fmt.Println("Passing ANTHROPIC_API_KEY to container for Claude Code.")
+		// Skip if already configured via container_env_vars (user config takes precedence).
+		if _, alreadyConfigured := globalConfig.ContainerEnvVars["ANTHROPIC_API_KEY"]; !alreadyConfigured {
+			apiKey := globalConfig.AnthropicApiKey
+			if apiKey == "" {
+				apiKey = os.Getenv("ANTHROPIC_API_KEY")
+			}
+			if apiKey != "" {
+				// Avoid exposing the key via command-line args (process listings, debug output).
+				// Set in the process env and let Docker inherit it via a valueless -e flag.
+				os.Setenv("ANTHROPIC_API_KEY", apiKey)
+				runArgs = append(runArgs, "-e", "ANTHROPIC_API_KEY")
+				fmt.Println("Passing ANTHROPIC_API_KEY to container for Claude Code.")
+			}
 		}
 	}
 
