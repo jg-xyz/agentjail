@@ -1,10 +1,21 @@
 // zellij configuration for agentjail
 // https://zellij.dev/documentation/configuration
+//
+// Keybinds defined here are automatically reflected in the hints bar at the
+// bottom of the screen — hints.sh is regenerated from this file on each launch.
+// Recognised actions for the hints bar: NewTab, CloseTab, GoToPreviousTab,
+// GoToNextTab, Quit.
 
 pane_frames false
+theme "{{.Theme}}"
+default_mode "locked"
 
-keybinds {
-    normal clear-defaults=true {
-        bind "Ctrl t" { NewTab; }
+keybinds clear-defaults=true {
+    locked {
+        bind "Alt t" { NewTab; }
+        bind "Alt w" { CloseTab; }
+        bind "Alt [" { GoToPreviousTab; }
+        bind "Alt ]" { GoToNextTab; }
+        bind "Alt q" { Quit; }
     }
 }

@@ -327,7 +327,7 @@ func main() {
 		if zellijAgentName != "" {
 			zellijAgentCmd = agentCommand(zellijAgentName)
 		}
-		if err := writeZellijFiles(agentJailDir, dirName, globalConfig.ZellijThemeOrDefault(), zellijAgentName, zellijAgentCmd, globalConfig.FileBrowserCmd(), *shellPtr); err != nil {
+		if err := writeZellijFiles(agentJailDir, globalConfig.ZellijThemeOrDefault(), zellijAgentName, zellijAgentCmd, globalConfig.FileBrowserCmd(), *shellPtr); err != nil {
 			fmt.Printf("Warning: Could not write zellij layout: %v\n", err)
 		}
 	}
@@ -611,7 +611,7 @@ func main() {
 		}
 		// Launch zellij with the 3-tab layout. mise trust/install runs first so all
 		// tabs see the project's tools from the start.
-		zellijEntrypoint := buildZellijEntrypoint()
+		zellijEntrypoint := buildZellijEntrypoint(dirName)
 		runArgs = append(runArgs, "sh", "-c", zellijEntrypoint)
 	} else {
 		// Plain shell mode: restore the original -A behaviour.

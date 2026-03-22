@@ -1,0 +1,27 @@
+// Zellij layout for agentjail — rendered by writeZellijFiles at launch time.
+// Variables: {{.AgentTabName}}, {{.Shell}}
+// Keybinds are defined in config.kdl (same directory); hints.sh is auto-generated from them.
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=1 borderless=true command="/root/.agentjail/zellij/tabs/hints.sh"
+    }
+    tab name="{{.AgentTabName}}" focus=true {
+        pane command="/root/.agentjail/zellij/tabs/agent.sh" {
+            cwd "/project"
+        }
+    }
+    tab name="terminal" {
+        pane command="{{.Shell}}" {
+            cwd "/project"
+        }
+    }
+    tab name="files" {
+        pane command="/root/.agentjail/zellij/tabs/files.sh" {
+            cwd "/project"
+        }
+    }
+}

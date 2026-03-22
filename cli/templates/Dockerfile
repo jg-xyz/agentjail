@@ -63,6 +63,10 @@ RUN mise use -g \
 
 #rm ~/.config/starship.toml && \
 
+# Configure micro: unbind Ctrl+t which zellij intercepts for new-tab
+RUN mkdir -p /root/.config/micro && \
+    printf '{"CtrlT": "None"}\n' > /root/.config/micro/bindings.json
+
 # aliases
 RUN echo "alias files='rovr'" >> ~/.${SHELL}rc && \
     echo "alias edit='${EDITOR}'" >> ~/.${SHELL}rc && \

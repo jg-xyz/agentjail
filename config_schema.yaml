@@ -103,6 +103,33 @@ inject_gh_auth_token: false    # true | false
 preferred_agent: ""            # "" (prompt on -A) | copilot | opencode | claude
 
 
+# --------------------------------------------------------------
+# use_zellij
+#   When true, the container starts inside a zellij session with
+#   three tabs:
+#     tab 1 — preferred agent (auto-starts on first prompt)
+#     tab 2 — plain terminal
+#     tab 3 — file browser (see file_browser below)
+#   When false, the container drops directly into a shell (or
+#   runs the agent when -A is passed, as before).
+#
+#   Values: true | false
+#   Default: true
+# --------------------------------------------------------------
+use_zellij: true               # true | false
+
+
+# --------------------------------------------------------------
+# file_browser
+#   Command launched in the file browser tab when use_zellij is
+#   true. Can be any terminal file manager available in the image.
+#
+#   Values: rovr | yazi | any shell command
+#   Default: rovr
+# --------------------------------------------------------------
+file_browser: rovr             # rovr | yazi | <any command>
+
+
 # ============================================================
 #  agent_frameworks
 #  Controls which AI agent CLIs are installed in the container

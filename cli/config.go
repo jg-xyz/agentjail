@@ -52,8 +52,11 @@ func (c *GlobalConfig) FileBrowserCmd() string {
 }
 
 type AgentFrameworksConfig struct {
-	OpenCode   FrameworkConfig `yaml:"opencode"`
-	Copilot    FrameworkConfig `yaml:"copilot"`
+	OpenCode FrameworkConfig `yaml:"opencode"`
+	Copilot  FrameworkConfig `yaml:"copilot"`
+	// ClaudeCode was previously keyed as "claude_code" in YAML. It was renamed
+	// to "claude" to match the binary name. Users with claude_code: in their
+	// config should rename the key to claude:.
 	ClaudeCode FrameworkConfig `yaml:"claude"`
 }
 
