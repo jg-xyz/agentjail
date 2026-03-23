@@ -120,6 +120,22 @@ anthropic_api_key: ""
 # Leave empty to be prompted when using -A.
 preferred_agent: ""
 
+# Launch the container inside a Zellij multiplexer.
+# See "Zellij" section below.
+use_zellij: true
+
+# Zellij color theme. Any built-in theme name works, e.g.:
+#   tokyo-night-storm (default), catppuccin-mocha, gruvbox-dark, nord
+zellij_theme: tokyo-night-storm
+
+# Command launched in the files tab.
+# Values: rovr | <any terminal file manager in the image>
+file_browser: rovr
+
+# Zellij plugins to display in the bottom status bar (right side).
+# See "Zellij plugins" section below.
+zellij_plugins: []
+
 # Which agent CLIs to install in the image.
 # Changing enabled flags requires rebuilding: agentjail -b
 agent_frameworks:
@@ -127,7 +143,7 @@ agent_frameworks:
     enabled: true
   opencode:
     enabled: false
-  claude_code:
+  claude:
     enabled: false
 
 # Environment variables injected into the container via docker run -e.
@@ -182,6 +198,49 @@ port_mappings:
 
 These are merged with any `-p` flags given on the command line.
 
+## Zellij
+
+When `use_zellij: true` (the default), the container opens inside a [Zellij](https://zellij.dev) terminal multiplexer with three tabs:
+
+| Tab | Contents |
+|-----|----------|
+| agent | Preferred agent — auto-launches on first prompt |
+| terminal | Plain shell |
+| files | File browser (`rovr` by default) — auto-launches on first prompt |
+
+Keybinds (start in locked mode — all other keys pass through to the active pane):
+
+| Key | Action |
+|-----|--------|
+| `Alt+T` | New tab |
+| `Alt+W` | Close tab |
+| `Alt+[` / `Alt+]` | Cycle tabs |
+| `Alt+Q` | Quit |
+
+Set `use_zellij: false` to drop directly into a shell instead.
+
+### Zellij plugins
+
+Plugins are `.wasm` files that appear on the right side of the bottom status bar, alongside the keybind hints. Two installation methods are supported:
+
+**Local path** — copied from the host on every launch:
+
+```yaml
+zellij_plugins:
+  - path: "~/projects/my-plugin/dist/my-plugin.wasm"
+```
+
+**URL** — downloaded on first launch and cached in `.agentjail/zellij/plugins/`:
+
+```yaml
+zellij_plugins:
+  - url: "https://github.com/user/repo/releases/latest/download/my-plugin.wasm"
+```
+
+To force a re-download of a cached plugin, delete `.agentjail/zellij/plugins/<filename>`.
+
+Missing files and failed downloads are skipped with a warning — they will not prevent the container from starting.
+
 ## Agents
 
 ### GitHub Copilot
@@ -217,7 +276,7 @@ Enable in config:
 
 ```yaml
 agent_frameworks:
-  claude_code:
+  claude:
     enabled: true
 
 # Option 1: set the key directly in config
@@ -246,6 +305,6 @@ agentjail -b
 
 ### What's in the image
 
-Ubuntu 24.04 with: `gh`, `git`, `micro`, `vim`, `nano`, `zsh`, `bash`, `node` (via mise), `python3`, `uv`, `pip`, `aws-cli`, `ripgrep`, `fd`, `fzf`, `eza`, `yq`, `television`, `rovr`, `rich-cli`, starship prompt.
+Ubuntu 24.04 with: `gh`, `git`, `micro`, `vim`, `nano`, `zsh`, `bash`, `node` (via mise), `python3`, `uv`, `pip`, `aws-cli`, `ripgrep`, `fd`, `fzf`, `eza`, `yq`, `television`, `zellij`, `rovr`, `rich-cli`, starship prompt.
 
-Shell aliases: `files` → rovr, `edit` → configured editor, `/exit` → exit.
+Shell aliases: `files` → file browser, `edit` → configured editor, `/exit` → exit.

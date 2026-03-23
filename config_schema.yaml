@@ -130,6 +130,34 @@ use_zellij: true               # true | false
 file_browser: rovr             # rovr | yazi | <any command>
 
 
+# --------------------------------------------------------------
+# zellij_plugins
+#   A list of Zellij plugin .wasm files to load in the bottom
+#   status bar (right side, alongside the keybind hints bar).
+#   Each entry specifies the plugin via one of:
+#
+#     path: absolute or ~/... path to a .wasm file on the host.
+#           The file is copied into .agentjail/zellij/plugins/
+#           on every launch.
+#
+#     url:  direct URL to download the .wasm from (e.g. a GitHub
+#           Releases asset). Downloaded once and cached in
+#           .agentjail/zellij/plugins/; subsequent launches skip
+#           the download if the file is already present.
+#
+#   Missing files and failed downloads are skipped with a warning
+#   rather than blocking the container from starting.
+#
+#   Default: [] (no plugins)
+# --------------------------------------------------------------
+zellij_plugins: []
+
+# Examples:
+#   zellij_plugins:
+#     - path: "~/projects/zellij-claude-limits/dist/zellij-claude-limits.wasm"
+#     - url: "https://github.com/jg-xyz/zellij-claude-limits/releases/latest/download/zellij-claude-limits.wasm"
+
+
 # ============================================================
 #  agent_frameworks
 #  Controls which AI agent CLIs are installed in the container

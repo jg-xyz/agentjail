@@ -327,7 +327,7 @@ func main() {
 		if zellijAgentName != "" {
 			zellijAgentCmd = agentCommand(zellijAgentName)
 		}
-		if err := writeZellijFiles(agentJailDir, globalConfig.ZellijThemeOrDefault(), zellijAgentName, zellijAgentCmd, globalConfig.FileBrowserCmd(), *shellPtr); err != nil {
+		if err := writeZellijFiles(agentJailDir, globalConfig.ZellijThemeOrDefault(), zellijAgentName, zellijAgentCmd, globalConfig.FileBrowserCmd(), *shellPtr, globalConfig.ZellijPlugins); err != nil {
 			fmt.Printf("Warning: Could not write zellij layout: %v\n", err)
 		}
 	}
@@ -359,6 +359,14 @@ func main() {
 		"-e", fmt.Sprintf("HISTFILE=/root/.agentjail/%s_history", *shellPtr),
 		"-e", fmt.Sprintf("AGENTJAIL_HOST_PATH=%s", absDir),
 	)
+
+	// Inject host UID/GID so the container can restore file ownership on exit.
+	if hostUser, err := user.Current(); err == nil {
+		runArgs = append(runArgs,
+			"-e", fmt.Sprintf("HOST_UID=%s", hostUser.Uid),
+			"-e", fmt.Sprintf("HOST_GID=%s", hostUser.Gid),
+		)
+	}
 
 	// Mount rovr config (always)
 	rovrMount := fmt.Sprintf("%s/rovr:/root/.config/rovr", agentJailDir)
@@ -612,7 +620,8 @@ func main() {
 		// Launch zellij with the 3-tab layout. mise trust/install runs first so all
 		// tabs see the project's tools from the start.
 		zellijEntrypoint := buildZellijEntrypoint(dirName)
-		runArgs = append(runArgs, "sh", "-c", zellijEntrypoint)
+		chownFix := `if [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true; fi`
+		runArgs = append(runArgs, "sh", "-c", zellijEntrypoint+"; "+chownFix)
 	} else {
 		// Plain shell mode: restore the original -A behaviour.
 		shell := *shellPtr

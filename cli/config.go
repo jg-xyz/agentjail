@@ -22,6 +22,7 @@ type GlobalConfig struct {
 	UseZellij            *bool                 `yaml:"use_zellij"`
 	ZellijTheme          string                `yaml:"zellij_theme"`
 	FileBrowser          string                `yaml:"file_browser"`
+	ZellijPlugins        []ZellijPlugin        `yaml:"zellij_plugins"`
 	AgentFrameworks      AgentFrameworksConfig `yaml:"agent_frameworks"`
 	ContainerEnvVars     map[string]string     `yaml:"container_env_vars"`
 	PortMappings         []string              `yaml:"port_mappings"`
@@ -49,6 +50,13 @@ func (c *GlobalConfig) FileBrowserCmd() string {
 		return c.FileBrowser
 	}
 	return "rovr"
+}
+
+// ZellijPlugin represents a single Zellij plugin .wasm file to load in the
+// bottom status bar. Exactly one of Path or URL should be set.
+type ZellijPlugin struct {
+	Path string `yaml:"path"` // absolute or ~/... path on host to the .wasm file
+	URL  string `yaml:"url"`  // direct URL to download the .wasm from (cached after first download)
 }
 
 type AgentFrameworksConfig struct {

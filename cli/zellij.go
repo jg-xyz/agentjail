@@ -3,7 +3,13 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"time"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -36,7 +42,7 @@ func writeExecutable(path, content string) error {
 // a fresh session regardless of context.
 func buildZellijEntrypoint(sessionName string) string {
 	base := "mise trust --yes /project; mise install; " +
-		"ZELLIJ_CONFIG_DIR=/root/.agentjail/zellij exec mise x -- zellij" +
+		"ZELLIJ_CONFIG_DIR=/root/.agentjail/zellij mise x -- zellij" +
 		" --new-session-with-layout /root/.agentjail/zellij/layout.kdl"
 	if sessionName != "" {
 		return base + " --session " + shellEscape(sessionName)
@@ -126,6 +132,143 @@ func buildHintsLine(binds []zellijKeybind) string {
 	return strings.ReplaceAll(line, "'", "")
 }
 
+// pluginNameFromURL extracts the filename portion from a plugin URL.
+// For example "https://example.com/releases/my-plugin.wasm" → "my-plugin.wasm".
+func pluginNameFromURL(rawURL string) (string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid plugin URL %q: %w", rawURL, err)
+	}
+	name := path.Base(u.Path)
+	if name == "" || name == "." || name == "/" {
+		return "", fmt.Errorf("cannot derive filename from URL %q", rawURL)
+	}
+	return name, nil
+}
+
+// downloadPlugin fetches rawURL and writes it to dst. The caller is responsible
+// for ensuring the destination directory exists.
+func downloadPlugin(dst, rawURL string) error {
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(rawURL) //nolint:gosec // URL is user-supplied config, not attacker-controlled
+	if err != nil {
+		return fmt.Errorf("GET %s: %w", rawURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GET %s: unexpected status %s", rawURL, resp.Status)
+	}
+	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("create %s: %w", dst, err)
+	}
+	_, copyErr := io.Copy(f, resp.Body)
+	f.Close()
+	if copyErr != nil {
+		_ = os.Remove(dst) // clean up partial file
+		return fmt.Errorf("write %s: %w", dst, copyErr)
+	}
+	return nil
+}
+
+// copyPlugins installs .wasm plugin files into pluginsDir and returns their
+// in-container paths (/root/.agentjail/zellij/plugins/<name>).
+//
+// Each plugin is specified by either a local Path or a URL:
+//   - Path: the file is copied from the host every launch.
+//   - URL:  the file is downloaded on first use and cached; subsequent launches
+//     skip the download if the file already exists in pluginsDir.
+//
+// Missing or unreachable plugins are logged and skipped rather than failing.
+func copyPlugins(pluginsDir string, plugins []ZellijPlugin) ([]string, error) {
+	if len(plugins) == 0 {
+		return nil, nil
+	}
+	if err := os.MkdirAll(pluginsDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create plugins dir: %w", err)
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine home dir: %w", err)
+	}
+
+	var containerPaths []string
+	for _, p := range plugins {
+		var name string
+
+		switch {
+		case p.URL != "":
+			n, err := pluginNameFromURL(p.URL)
+			if err != nil {
+				log.Printf("zellij plugin skipped: %v", err)
+				continue
+			}
+			name = n
+			dst := filepath.Join(pluginsDir, name)
+			if _, err := os.Stat(dst); err == nil {
+				// Already cached — skip download.
+			} else {
+				log.Printf("zellij plugin downloading: %s", p.URL)
+				if err := downloadPlugin(dst, p.URL); err != nil {
+					log.Printf("zellij plugin download failed, skipping: %v", err)
+					continue
+				}
+			}
+
+		case p.Path != "":
+			src := p.Path
+			if strings.HasPrefix(src, "~/") {
+				src = filepath.Join(homeDir, src[2:])
+			}
+			name = filepath.Base(src)
+			dst := filepath.Join(pluginsDir, name)
+
+			in, err := os.Open(src)
+			if err != nil {
+				log.Printf("zellij plugin not found, skipping: %s (%v)", src, err)
+				continue
+			}
+			out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+			if err != nil {
+				in.Close()
+				return nil, fmt.Errorf("failed to create plugin file %s: %w", dst, err)
+			}
+			_, copyErr := io.Copy(out, in)
+			in.Close()
+			out.Close()
+			if copyErr != nil {
+				return nil, fmt.Errorf("failed to copy plugin %s: %w", src, copyErr)
+			}
+
+		default:
+			log.Printf("zellij plugin entry has neither path nor url, skipping")
+			continue
+		}
+
+		containerPaths = append(containerPaths, "/root/.agentjail/zellij/plugins/"+name)
+	}
+	return containerPaths, nil
+}
+
+// buildBottomBar returns the KDL fragment for the bottom status bar pane.
+// With no plugins it returns the current single-pane form (hints only).
+// With plugins it returns a vertical split: hints on the left, each plugin on the right.
+func buildBottomBar(containerPluginPaths []string) string {
+	hintsCmd := "/root/.agentjail/zellij/tabs/hints.sh"
+	if len(containerPluginPaths) == 0 {
+		return fmt.Sprintf("        pane size=1 borderless=true command=%q", hintsCmd)
+	}
+	var sb strings.Builder
+	sb.WriteString("        pane size=1 borderless=true split_direction=\"vertical\" {\n")
+	sb.WriteString(fmt.Sprintf("            pane command=%q\n", hintsCmd))
+	for _, p := range containerPluginPaths {
+		sb.WriteString(fmt.Sprintf("            pane { plugin location=%q }\n", "file:"+p))
+	}
+	sb.WriteString("        }")
+	return sb.String()
+}
+
 // writeZellijFiles generates the zellij layout, config, and per-tab wrapper
 // scripts inside agentJailDir/zellij/. The directory is bind-mounted into the
 // container at /root/.agentjail/zellij/.
@@ -139,12 +282,18 @@ func buildHintsLine(binds []zellijKeybind) string {
 // The layout and config are rendered from embedded KDL templates. Keybinds in
 // config.kdl are parsed to auto-generate hints.sh, so the hints bar always
 // reflects whatever is in the template.
-func writeZellijFiles(agentJailDir, theme, agentName, agentCmd, filesCmd, shell string) error {
+func writeZellijFiles(agentJailDir, theme, agentName, agentCmd, filesCmd, shell string, plugins []ZellijPlugin) error {
 	zellijDir := filepath.Join(agentJailDir, "zellij")
 	tabsDir := filepath.Join(zellijDir, "tabs")
+	pluginsDir := filepath.Join(zellijDir, "plugins")
 
 	if err := os.MkdirAll(tabsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create zellij tabs dir: %w", err)
+	}
+
+	containerPluginPaths, err := copyPlugins(pluginsDir, plugins)
+	if err != nil {
+		return fmt.Errorf("failed to copy zellij plugins: %w", err)
 	}
 
 	agentTabName := sanitizeKDLString(agentName)
@@ -152,21 +301,21 @@ func writeZellijFiles(agentJailDir, theme, agentName, agentCmd, filesCmd, shell 
 		agentTabName = "shell"
 	}
 
-	// agent.sh — sets AGENTJAIL_TAB_CMD so the .zshrc hook auto-launches the agent.
+	// agent.sh — sets AGENTJAIL_TAB_CMD so the shell rc hook auto-launches the agent.
 	var agentScript string
 	if agentCmd != "" {
-		agentScript = fmt.Sprintf("#!/bin/sh\nexport AGENTJAIL_TAB_CMD=%s\nexec zsh\n",
-			shellEscape(agentCmd))
+		agentScript = fmt.Sprintf("#!/bin/sh\nexport AGENTJAIL_TAB_CMD=%s\nexec %s\n",
+			shellEscape(agentCmd), shellEscape(shell))
 	} else {
-		agentScript = "#!/bin/sh\nexec zsh\n"
+		agentScript = fmt.Sprintf("#!/bin/sh\nexec %s\n", shellEscape(shell))
 	}
 	if err := writeExecutable(filepath.Join(tabsDir, "agent.sh"), agentScript); err != nil {
 		return fmt.Errorf("failed to write agent.sh: %w", err)
 	}
 
-	// files.sh — sets AGENTJAIL_TAB_CMD so the .zshrc hook auto-launches the file manager.
-	filesScript := fmt.Sprintf("#!/bin/sh\nexport AGENTJAIL_TAB_CMD=%s\nexec zsh\n",
-		shellEscape(filesCmd))
+	// files.sh — sets AGENTJAIL_TAB_CMD so the shell rc hook auto-launches the file manager.
+	filesScript := fmt.Sprintf("#!/bin/sh\nexport AGENTJAIL_TAB_CMD=%s\nexec %s\n",
+		shellEscape(filesCmd), shellEscape(shell))
 	if err := writeExecutable(filepath.Join(tabsDir, "files.sh"), filesScript); err != nil {
 		return fmt.Errorf("failed to write files.sh: %w", err)
 	}
@@ -210,7 +359,8 @@ func writeZellijFiles(agentJailDir, theme, agentName, agentCmd, filesCmd, shell 
 		struct {
 			AgentTabName string
 			Shell        string
-		}{agentTabName, sanitizeKDLString(shell)})
+			BottomBar    string
+		}{agentTabName, sanitizeKDLString(shell), buildBottomBar(containerPluginPaths)})
 	if err != nil {
 		return fmt.Errorf("failed to render layout.kdl: %w", err)
 	}

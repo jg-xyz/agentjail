@@ -129,6 +129,22 @@ RUN . /etc/os-release && \
     ALIASES="Available Aliases: [blue][bold]\"files\"[/bold]: [green]rovr[/green], [bold]\"edit\"[/bold]: [green]${EDITOR}[/green][/blue]" && \
     printf "rich '[b]Welcome to [bold white]AgentJail![/bold white][/b]' --print --rule --rule-style 'bold blue' && rich 'You are now in a container running [bold gold3]$PRETTY_NAME[/bold gold3] \nYour project is mounted at [bold gold3]/project[/bold gold3] \nAvailable Package Managers: [bold dark_goldenrod]$PKG_MANAGER, mise, uv, pip, npm[/bold dark_goldenrod] \nDefault shell: [bold dark_goldenrod]$SHELL[/bold dark_goldenrod] \n \n$AVAILABLE_AGENTS \n \n$AVAILABLE_EDITORS \n \n$ALIASES \n\n type [red bold]exit[/red bold] to exit the container \n\nhave fun, and most importantly, \n[bold medium_orchid]~~ v i b e ~~[/bold medium_orchid]\n\n' --print --style 'blue'" >>  ~/.${SHELL}rc
 
+# Fix file ownership on shell exit: chown /project back to the host user.
+# HOST_UID and HOST_GID are injected by the agentjail CLI at runtime.
+RUN cat >> ~/.zshrc <<'OWNERSHIP_FIX'
+
+zshexit() {
+    if [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then
+        chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true
+    fi
+}
+OWNERSHIP_FIX
+
+RUN cat >> ~/.bashrc <<'OWNERSHIP_FIX'
+
+trap 'if [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true; fi' EXIT
+OWNERSHIP_FIX
+
 # install starship
 RUN wget https://github.com/starship/starship/releases/download/v${STARSHIP_VERSION}/starship-x86_64-unknown-linux-gnu.tar.gz && \
     tar xzvf starship-x86_64-unknown-linux-gnu.tar.gz && \

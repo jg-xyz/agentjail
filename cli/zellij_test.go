@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,7 +61,7 @@ func TestWriteZellijFiles(t *testing.T) {
 	dir := t.TempDir()
 
 	t.Run("with agent", func(t *testing.T) {
-		if err := writeZellijFiles(dir, "tokyo-night-storm", "copilot", "copilot", "rovr", "zsh"); err != nil {
+		if err := writeZellijFiles(dir, "tokyo-night-storm", "copilot", "copilot", "rovr", "zsh", nil); err != nil {
 			t.Fatalf("writeZellijFiles: %v", err)
 		}
 
@@ -84,7 +86,7 @@ func TestWriteZellijFiles(t *testing.T) {
 			t.Error("layout terminal tab should use configured shell (zsh)")
 		}
 
-		// agent.sh should set AGENTJAIL_TAB_CMD
+		// agent.sh should set AGENTJAIL_TAB_CMD and exec the configured shell
 		agentSh := readFile(t, filepath.Join(dir, "zellij", "tabs", "agent.sh"))
 		if !strings.Contains(agentSh, "AGENTJAIL_TAB_CMD") {
 			t.Error("agent.sh missing AGENTJAIL_TAB_CMD")
@@ -92,11 +94,17 @@ func TestWriteZellijFiles(t *testing.T) {
 		if !strings.Contains(agentSh, "'copilot'") {
 			t.Error("agent.sh should contain shell-escaped agent command")
 		}
+		if !strings.Contains(agentSh, "exec 'zsh'") {
+			t.Errorf("agent.sh should exec the configured shell (zsh); got:\n%s", agentSh)
+		}
 
-		// files.sh should reference the file browser command
+		// files.sh should reference the file browser command and exec the configured shell
 		filesSh := readFile(t, filepath.Join(dir, "zellij", "tabs", "files.sh"))
 		if !strings.Contains(filesSh, "'rovr'") {
 			t.Error("files.sh should contain shell-escaped files command")
+		}
+		if !strings.Contains(filesSh, "exec 'zsh'") {
+			t.Errorf("files.sh should exec the configured shell (zsh); got:\n%s", filesSh)
 		}
 
 		// scripts must be executable
@@ -106,17 +114,25 @@ func TestWriteZellijFiles(t *testing.T) {
 
 	t.Run("no agent configured", func(t *testing.T) {
 		dir2 := t.TempDir()
-		if err := writeZellijFiles(dir2, "gruvbox-dark", "", "", "rovr", "bash"); err != nil {
+		if err := writeZellijFiles(dir2, "gruvbox-dark", "", "", "rovr", "bash", nil); err != nil {
 			t.Fatalf("writeZellijFiles: %v", err)
 		}
 		layout := readFile(t, filepath.Join(dir2, "zellij", "layout.kdl"))
 		if !strings.Contains(layout, `tab name="shell"`) {
 			t.Errorf("expected fallback tab name 'shell'; got:\n%s", layout)
 		}
-		// agent.sh should just exec the shell, no AGENTJAIL_TAB_CMD
+		// agent.sh should just exec the configured shell, no AGENTJAIL_TAB_CMD
 		agentSh := readFile(t, filepath.Join(dir2, "zellij", "tabs", "agent.sh"))
 		if strings.Contains(agentSh, "AGENTJAIL_TAB_CMD") {
 			t.Error("agent.sh should not set AGENTJAIL_TAB_CMD when no agent is configured")
+		}
+		if !strings.Contains(agentSh, "exec 'bash'") {
+			t.Errorf("agent.sh should exec the configured shell (bash); got:\n%s", agentSh)
+		}
+		// files.sh should also use the configured shell
+		filesSh2 := readFile(t, filepath.Join(dir2, "zellij", "tabs", "files.sh"))
+		if !strings.Contains(filesSh2, "exec 'bash'") {
+			t.Errorf("files.sh should exec the configured shell (bash); got:\n%s", filesSh2)
 		}
 		// terminal tab should use bash
 		if !strings.Contains(layout, `command="bash"`) {
@@ -126,7 +142,7 @@ func TestWriteZellijFiles(t *testing.T) {
 
 	t.Run("agent name with special chars is sanitized", func(t *testing.T) {
 		dir3 := t.TempDir()
-		if err := writeZellijFiles(dir3, "tokyo-night-storm", `bad"name`, "cmd", "rovr", "zsh"); err != nil {
+		if err := writeZellijFiles(dir3, "tokyo-night-storm", `bad"name`, "cmd", "rovr", "zsh", nil); err != nil {
 			t.Fatalf("writeZellijFiles: %v", err)
 		}
 		layout := readFile(t, filepath.Join(dir3, "zellij", "layout.kdl"))
@@ -219,11 +235,11 @@ func TestBuildHintsLine_Empty(t *testing.T) {
 func TestHintsReflectConfig(t *testing.T) {
 	// hints.sh must contain the same shortcuts that are in config.kdl
 	dir := t.TempDir()
-	if err := writeZellijFiles(dir, "tokyo-night-storm", "copilot", "copilot", "rovr", "zsh"); err != nil {
+	if err := writeZellijFiles(dir, "tokyo-night-storm", "copilot", "copilot", "rovr", "zsh", nil); err != nil {
 		t.Fatalf("writeZellijFiles: %v", err)
 	}
 	hints := readFile(t, filepath.Join(dir, "zellij", "tabs", "hints.sh"))
-	for _, want := range []string{"Ctrl+T", "Alt+W", "Alt+[", "Alt+]", "Alt+Q"} {
+	for _, want := range []string{"Alt+T", "Alt+W", "Alt+[", "Alt+]", "Alt+Q"} {
 		if !strings.Contains(hints, want) {
 			t.Errorf("hints.sh missing key %q; got:\n%s", want, hints)
 		}
@@ -232,7 +248,7 @@ func TestHintsReflectConfig(t *testing.T) {
 
 func TestWriteZellijFiles_EmptyFilesCmd(t *testing.T) {
 	dir := t.TempDir()
-	if err := writeZellijFiles(dir, "tokyo-night-storm", "copilot", "copilot", "", "zsh"); err != nil {
+	if err := writeZellijFiles(dir, "tokyo-night-storm", "copilot", "copilot", "", "zsh", nil); err != nil {
 		t.Fatalf("writeZellijFiles with empty filesCmd: %v", err)
 	}
 
@@ -246,7 +262,7 @@ func TestWriteZellijFiles_EmptyFilesCmd(t *testing.T) {
 
 func TestConfigLockedModeAndKeybinds(t *testing.T) {
 	dir := t.TempDir()
-	if err := writeZellijFiles(dir, "tokyo-night-storm", "copilot", "copilot", "rovr", "zsh"); err != nil {
+	if err := writeZellijFiles(dir, "tokyo-night-storm", "copilot", "copilot", "rovr", "zsh", nil); err != nil {
 		t.Fatalf("writeZellijFiles: %v", err)
 	}
 	config := readFile(t, filepath.Join(dir, "zellij", "config.kdl"))
@@ -259,7 +275,7 @@ func TestConfigLockedModeAndKeybinds(t *testing.T) {
 	if !strings.Contains(config, `"Alt w"`) {
 		t.Errorf("config.kdl missing close-tab keybind; got:\n%s", config)
 	}
-	if !strings.Contains(config, `"Ctrl t"`) {
+	if !strings.Contains(config, `"Alt t"`) {
 		t.Errorf("config.kdl missing new tab keybind; got:\n%s", config)
 	}
 	if !strings.Contains(config, `"Alt ["`) || !strings.Contains(config, `"Alt ]"`) {
@@ -269,7 +285,7 @@ func TestConfigLockedModeAndKeybinds(t *testing.T) {
 
 func TestLayoutHintsPane(t *testing.T) {
 	dir := t.TempDir()
-	if err := writeZellijFiles(dir, "tokyo-night-storm", "copilot", "copilot", "rovr", "zsh"); err != nil {
+	if err := writeZellijFiles(dir, "tokyo-night-storm", "copilot", "copilot", "rovr", "zsh", nil); err != nil {
 		t.Fatalf("writeZellijFiles: %v", err)
 	}
 	layout := readFile(t, filepath.Join(dir, "zellij", "layout.kdl"))
@@ -344,6 +360,241 @@ func TestBuildZellijEntrypoint(t *testing.T) {
 			t.Errorf("missing --new-session-with-layout flag; got %q", got)
 		}
 	})
+	t.Run("does not use exec so post-zellij chown can run", func(t *testing.T) {
+		got := buildZellijEntrypoint("myproject")
+		// "exec zellij" would replace the shell, making any trailing command dead code.
+		// The entrypoint must not use exec so the chown wrapper in main.go fires.
+		if strings.Contains(got, "exec mise") || strings.Contains(got, "exec zellij") {
+			t.Errorf("entrypoint must not use exec (would prevent post-exit chown); got %q", got)
+		}
+	})
+}
+
+func TestBuildBottomBar_NoPlugins(t *testing.T) {
+	got := buildBottomBar(nil)
+	if !strings.Contains(got, `command="/root/.agentjail/zellij/tabs/hints.sh"`) {
+		t.Errorf("expected hints.sh command pane; got:\n%s", got)
+	}
+	if strings.Contains(got, "split_direction") {
+		t.Errorf("no-plugin bottom bar should be a single pane, not a split; got:\n%s", got)
+	}
+}
+
+func TestBuildBottomBar_WithPlugin(t *testing.T) {
+	paths := []string{"/root/.agentjail/zellij/plugins/my-plugin.wasm"}
+	got := buildBottomBar(paths)
+	if !strings.Contains(got, `split_direction="vertical"`) {
+		t.Errorf("plugin bottom bar should be a vertical split; got:\n%s", got)
+	}
+	if !strings.Contains(got, `command="/root/.agentjail/zellij/tabs/hints.sh"`) {
+		t.Errorf("plugin bottom bar should still contain hints.sh; got:\n%s", got)
+	}
+	if !strings.Contains(got, `file:/root/.agentjail/zellij/plugins/my-plugin.wasm`) {
+		t.Errorf("plugin bottom bar missing plugin location; got:\n%s", got)
+	}
+}
+
+func TestBuildBottomBar_MultiplePlugins(t *testing.T) {
+	paths := []string{
+		"/root/.agentjail/zellij/plugins/plugin-a.wasm",
+		"/root/.agentjail/zellij/plugins/plugin-b.wasm",
+	}
+	got := buildBottomBar(paths)
+	if !strings.Contains(got, "plugin-a.wasm") {
+		t.Errorf("missing plugin-a; got:\n%s", got)
+	}
+	if !strings.Contains(got, "plugin-b.wasm") {
+		t.Errorf("missing plugin-b; got:\n%s", got)
+	}
+}
+
+func TestCopyPlugins_CopiesFile(t *testing.T) {
+	// Write a fake .wasm file in a temp src dir
+	srcDir := t.TempDir()
+	srcFile := filepath.Join(srcDir, "my-plugin.wasm")
+	if err := os.WriteFile(srcFile, []byte("fake wasm content"), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	dstDir := t.TempDir()
+	paths, err := copyPlugins(dstDir, []ZellijPlugin{{Path: srcFile}})
+	if err != nil {
+		t.Fatalf("copyPlugins: %v", err)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 container path, got %d", len(paths))
+	}
+	if paths[0] != "/root/.agentjail/zellij/plugins/my-plugin.wasm" {
+		t.Errorf("unexpected container path: %s", paths[0])
+	}
+	// Verify the file was actually copied
+	data, err := os.ReadFile(filepath.Join(dstDir, "my-plugin.wasm"))
+	if err != nil {
+		t.Fatalf("copied file not found: %v", err)
+	}
+	if string(data) != "fake wasm content" {
+		t.Errorf("copied file content mismatch: %s", data)
+	}
+}
+
+func TestCopyPlugins_MissingFileSkipped(t *testing.T) {
+	dstDir := t.TempDir()
+	paths, err := copyPlugins(dstDir, []ZellijPlugin{{Path: "/nonexistent/plugin.wasm"}})
+	if err != nil {
+		t.Fatalf("copyPlugins should not error on missing file; got: %v", err)
+	}
+	if len(paths) != 0 {
+		t.Errorf("missing file should be skipped; got paths: %v", paths)
+	}
+}
+
+func TestCopyPlugins_Empty(t *testing.T) {
+	paths, err := copyPlugins(t.TempDir(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(paths) != 0 {
+		t.Errorf("expected no paths for empty input; got: %v", paths)
+	}
+}
+
+func TestWriteZellijFiles_WithPlugin(t *testing.T) {
+	// Create a fake plugin .wasm
+	pluginSrc := filepath.Join(t.TempDir(), "zellij-claude-limits.wasm")
+	if err := os.WriteFile(pluginSrc, []byte("wasm"), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	dir := t.TempDir()
+	plugins := []ZellijPlugin{{Path: pluginSrc}}
+	if err := writeZellijFiles(dir, "tokyo-night-storm", "claude", "claude", "rovr", "zsh", plugins); err != nil {
+		t.Fatalf("writeZellijFiles: %v", err)
+	}
+
+	layout := readFile(t, filepath.Join(dir, "zellij", "layout.kdl"))
+	if !strings.Contains(layout, "zellij-claude-limits.wasm") {
+		t.Errorf("layout.kdl should reference the plugin wasm; got:\n%s", layout)
+	}
+	if !strings.Contains(layout, "split_direction") {
+		t.Errorf("layout.kdl should use a split bottom bar when plugins are present; got:\n%s", layout)
+	}
+	if !strings.Contains(layout, "hints.sh") {
+		t.Errorf("layout.kdl should still contain hints.sh; got:\n%s", layout)
+	}
+
+	// Verify the .wasm was copied into the plugins dir
+	if _, err := os.Stat(filepath.Join(dir, "zellij", "plugins", "zellij-claude-limits.wasm")); err != nil {
+		t.Errorf("plugin .wasm not copied to plugins dir: %v", err)
+	}
+}
+
+func TestPluginNameFromURL(t *testing.T) {
+	cases := []struct {
+		url     string
+		want    string
+		wantErr bool
+	}{
+		{"https://github.com/user/repo/releases/download/v1.0/plugin.wasm", "plugin.wasm", false},
+		{"https://example.com/dist/zellij-claude-limits.wasm", "zellij-claude-limits.wasm", false},
+		{"https://example.com/", "", true},
+		{"not a url ://", "", true},
+	}
+	for _, c := range cases {
+		got, err := pluginNameFromURL(c.url)
+		if c.wantErr {
+			if err == nil {
+				t.Errorf("pluginNameFromURL(%q): expected error, got %q", c.url, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("pluginNameFromURL(%q): unexpected error: %v", c.url, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("pluginNameFromURL(%q) = %q, want %q", c.url, got, c.want)
+		}
+	}
+}
+
+func TestCopyPlugins_URLDownload(t *testing.T) {
+	const wasmContent = "fake wasm from server"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(wasmContent))
+	}))
+	defer srv.Close()
+
+	pluginURL := srv.URL + "/dist/server-plugin.wasm"
+	dstDir := t.TempDir()
+	paths, err := copyPlugins(dstDir, []ZellijPlugin{{URL: pluginURL}})
+	if err != nil {
+		t.Fatalf("copyPlugins: %v", err)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 container path, got %d", len(paths))
+	}
+	if paths[0] != "/root/.agentjail/zellij/plugins/server-plugin.wasm" {
+		t.Errorf("unexpected container path: %s", paths[0])
+	}
+	data, err := os.ReadFile(filepath.Join(dstDir, "server-plugin.wasm"))
+	if err != nil {
+		t.Fatalf("downloaded file not found: %v", err)
+	}
+	if string(data) != wasmContent {
+		t.Errorf("file content mismatch: got %q, want %q", data, wasmContent)
+	}
+}
+
+func TestCopyPlugins_URLCached(t *testing.T) {
+	// Server should only be hit once; second call uses the cached file.
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Write([]byte("wasm"))
+	}))
+	defer srv.Close()
+
+	pluginURL := srv.URL + "/dist/cached-plugin.wasm"
+	dstDir := t.TempDir()
+
+	// First call: download
+	if _, err := copyPlugins(dstDir, []ZellijPlugin{{URL: pluginURL}}); err != nil {
+		t.Fatalf("first copyPlugins: %v", err)
+	}
+	// Second call: should use cache, no new HTTP request
+	if _, err := copyPlugins(dstDir, []ZellijPlugin{{URL: pluginURL}}); err != nil {
+		t.Fatalf("second copyPlugins: %v", err)
+	}
+	if hits != 1 {
+		t.Errorf("expected exactly 1 HTTP request (cached on second call), got %d", hits)
+	}
+}
+
+func TestCopyPlugins_URLNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	dstDir := t.TempDir()
+	paths, err := copyPlugins(dstDir, []ZellijPlugin{{URL: srv.URL + "/missing.wasm"}})
+	if err != nil {
+		t.Fatalf("copyPlugins should not hard-fail on 404; got: %v", err)
+	}
+	if len(paths) != 0 {
+		t.Errorf("failed download should be skipped; got paths: %v", paths)
+	}
+}
+
+func TestCopyPlugins_EmptyEntry(t *testing.T) {
+	dstDir := t.TempDir()
+	paths, err := copyPlugins(dstDir, []ZellijPlugin{{}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(paths) != 0 {
+		t.Errorf("empty entry should be skipped; got: %v", paths)
+	}
 }
 
 func readFile(t *testing.T, path string) string {
