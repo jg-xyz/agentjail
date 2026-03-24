@@ -154,8 +154,8 @@ zellij_plugins: []
 
 # Examples:
 #   zellij_plugins:
-#     - path: "~/projects/zellij-claude-limits/dist/zellij-claude-limits.wasm"
-#     - url: "https://github.com/jg-xyz/zellij-claude-limits/releases/latest/download/zellij-claude-limits.wasm"
+#     - path: "~/projects/zellij-claude-limits/dist/zellij_claude_limits.wasm"
+#     - url: "https://raw.githubusercontent.com/jg-xyz/zellij-claude-limits/main/dist/zellij_claude_limits.wasm"
 
 
 # ============================================================

@@ -47,6 +47,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 # install tools
 RUN mise use -g \
     aws-cli \
+    bat \
     eza \
     fd \
     fzf \

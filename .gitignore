@@ -1,7 +1,6 @@
 dist/
 dist/*
 dist/agentjail
-cli/agentjail-cli
 .mise/*
 .agentjail/*
 opencode.json
