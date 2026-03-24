@@ -47,6 +47,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 # install tools
 RUN mise use -g \
     aws-cli \
+    bat \
     eza \
     fd \
     fzf \
@@ -54,6 +55,7 @@ RUN mise use -g \
     ripgrep \
     television \
     yq \
+    zellij \
     pipx:rich-cli \
     pipx:rovr
 
@@ -62,11 +64,25 @@ RUN mise use -g \
 
 #rm ~/.config/starship.toml && \
 
+# Configure micro: unbind Ctrl+t which zellij intercepts for new-tab
+RUN mkdir -p /root/.config/micro && \
+    printf '{"CtrlT": "None"}\n' > /root/.config/micro/bindings.json
+
 # aliases
 RUN echo "alias files='rovr'" >> ~/.${SHELL}rc && \
     echo "alias edit='${EDITOR}'" >> ~/.${SHELL}rc && \
     echo "alias /exit=exit" >> ~/.${SHELL}rc && \
     echo "\n\n" >> ~/.${SHELL}rc
+
+# When running inside a zellij session, override 'exit' to quit zellij
+# (which also exits the container since zellij is launched with exec).
+# The ZELLIJ env var is set by zellij itself, so this is a no-op outside it.
+RUN cat >> ~/.${SHELL}rc <<'ZELLIJ_EXIT_HOOK'
+
+if [ -n "${ZELLIJ}" ]; then
+    alias exit='zellij action quit'
+fi
+ZELLIJ_EXIT_HOOK
 
 # configure prompt
 #RUN starship init ${SHELL} >> ~/.${SHELL}rc && \
@@ -79,7 +95,12 @@ RUN [ "${USE_OPENCODE}" = "true" ] && curl -LsSf https://opencode.com/install.sh
 RUN [ "${USE_COPILOT}" = "true" ] && curl -fsSL https://gh.io/copilot-install | bash || echo "Not installing copilot"
 
 # install claude code
-RUN [ "${USE_CLAUDE_CODE}" = "true" ] && mise x -- npm install -g @anthropic-ai/claude-code || echo "Not installing claude code"
+RUN if [ "${USE_CLAUDE_CODE}" = "true" ]; then \
+    mise x -- npm install -g @anthropic-ai/claude-code && \
+    ln -sf "$(mise x -- npm prefix -g)/bin/claude" /usr/local/bin/claude; \
+else \
+    echo "Not installing claude code"; \
+fi
 
 # configure MOTD
 RUN . /etc/os-release && \
@@ -109,6 +130,24 @@ RUN . /etc/os-release && \
     ALIASES="Available Aliases: [blue][bold]\"files\"[/bold]: [green]rovr[/green], [bold]\"edit\"[/bold]: [green]${EDITOR}[/green][/blue]" && \
     printf "rich '[b]Welcome to [bold white]AgentJail![/bold white][/b]' --print --rule --rule-style 'bold blue' && rich 'You are now in a container running [bold gold3]$PRETTY_NAME[/bold gold3] \nYour project is mounted at [bold gold3]/project[/bold gold3] \nAvailable Package Managers: [bold dark_goldenrod]$PKG_MANAGER, mise, uv, pip, npm[/bold dark_goldenrod] \nDefault shell: [bold dark_goldenrod]$SHELL[/bold dark_goldenrod] \n \n$AVAILABLE_AGENTS \n \n$AVAILABLE_EDITORS \n \n$ALIASES \n\n type [red bold]exit[/red bold] to exit the container \n\nhave fun, and most importantly, \n[bold medium_orchid]~~ v i b e ~~[/bold medium_orchid]\n\n' --print --style 'blue'" >>  ~/.${SHELL}rc
 
+# Fix file ownership on shell exit: chown /project back to the host user.
+# HOST_UID and HOST_GID are injected by the agentjail CLI at runtime.
+RUN cat >> ~/.zshrc <<'OWNERSHIP_FIX'
+
+zshexit() {
+    # Skip in zellij: the launcher wrapper handles chown once after the session ends.
+    if [ -z "${ZELLIJ}" ] && [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then
+        chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true
+    fi
+}
+OWNERSHIP_FIX
+
+RUN cat >> ~/.bashrc <<'OWNERSHIP_FIX'
+
+# Skip in zellij: the launcher wrapper handles chown once after the session ends.
+trap 'if [ -z "${ZELLIJ}" ] && [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true; fi' EXIT
+OWNERSHIP_FIX
+
 # install starship
 RUN wget https://github.com/starship/starship/releases/download/v${STARSHIP_VERSION}/starship-x86_64-unknown-linux-gnu.tar.gz && \
     tar xzvf starship-x86_64-unknown-linux-gnu.tar.gz && \
@@ -124,6 +163,39 @@ RUN wget https://github.com/starship/starship/releases/download/v${STARSHIP_VERS
     printf "\nexport STARSHIP_CONFIG=${STARSHIP_CONFIG}\neval \"\$(starship init bash)\"\n" >> ~/.bashrc && \
     printf "\nexport STARSHIP_CONFIG=${STARSHIP_CONFIG}\neval \"\$(starship init zsh)\"\n" >> ~/.zshrc
 
+
+# AgentJail tab launcher: runs AGENTJAIL_TAB_CMD on the first prompt in the tab.
+# AGENTJAIL_TAB_CMD is exported by per-tab wrapper scripts written at launch time.
+# Using precmd_functions (zsh) / PROMPT_COMMAND (bash) guarantees the hook runs
+# after the full rc file is sourced (so mise, starship, and aliases are active).
+RUN cat >> ~/.zshrc <<'AGENTJAIL_HOOK'
+
+# AgentJail tab launcher
+if [[ -n "${AGENTJAIL_TAB_CMD}" ]]; then
+    _agentjail_tab_cmd="${AGENTJAIL_TAB_CMD}"
+    unset AGENTJAIL_TAB_CMD
+    function _agentjail_launch_once() {
+        precmd_functions=(${precmd_functions:#_agentjail_launch_once})
+        eval "${_agentjail_tab_cmd}"
+    }
+    precmd_functions+=(_agentjail_launch_once)
+fi
+AGENTJAIL_HOOK
+
+RUN cat >> ~/.bashrc <<'AGENTJAIL_HOOK'
+
+# AgentJail tab launcher
+if [ -n "${AGENTJAIL_TAB_CMD}" ]; then
+    _agentjail_tab_cmd="${AGENTJAIL_TAB_CMD}"
+    unset AGENTJAIL_TAB_CMD
+    _agentjail_launch_once() {
+        PROMPT_COMMAND="${PROMPT_COMMAND//_agentjail_launch_once;/}"
+        PROMPT_COMMAND="${PROMPT_COMMAND//_agentjail_launch_once/}"
+        eval "${_agentjail_tab_cmd}"
+    }
+    PROMPT_COMMAND="_agentjail_launch_once;${PROMPT_COMMAND}"
+fi
+AGENTJAIL_HOOK
 
 ENV HOSTNAME=${HOSTNAME}
 

@@ -68,6 +68,18 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Subcommands (checked after --config pre-scan so os.Args is already clean).
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "config-update":
+			if err := runConfigUpdate(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		}
+	}
+
 	// 0. Load Global Config
 	var globalConfig *GlobalConfig
 	var err error
@@ -315,6 +327,23 @@ func main() {
 		fmt.Printf("Warning: Could not copy template configs: %v\n", err)
 	}
 
+	// Resolve the preferred agent and write zellij files (only when zellij is enabled).
+	if globalConfig.ZellijEnabled() {
+		zellijAgentName := globalConfig.PreferredAgent
+		if zellijAgentName == "" {
+			if agents := enabledAgents(globalConfig); len(agents) > 0 {
+				zellijAgentName = agents[0]
+			}
+		}
+		zellijAgentCmd := ""
+		if zellijAgentName != "" {
+			zellijAgentCmd = agentCommand(zellijAgentName)
+		}
+		if err := writeZellijFiles(agentJailDir, globalConfig.ZellijThemeOrDefault(), zellijAgentName, zellijAgentCmd, globalConfig.FileBrowserCmd(), *shellPtr, globalConfig.ZellijPlugins); err != nil {
+			fmt.Printf("Warning: Could not write zellij layout: %v\n", err)
+		}
+	}
+
 	// Collect all volumes for metadata
 	volumes := []string{
 		fmt.Sprintf("%s:/project", absDir),
@@ -342,6 +371,14 @@ func main() {
 		"-e", fmt.Sprintf("HISTFILE=/root/.agentjail/%s_history", *shellPtr),
 		"-e", fmt.Sprintf("AGENTJAIL_HOST_PATH=%s", absDir),
 	)
+
+	// Inject host UID/GID so the container can restore file ownership on exit.
+	if hostUser, err := user.Current(); err == nil {
+		runArgs = append(runArgs,
+			"-e", fmt.Sprintf("HOST_UID=%s", hostUser.Uid),
+			"-e", fmt.Sprintf("HOST_GID=%s", hostUser.Gid),
+		)
+	}
 
 	// Mount rovr config (always)
 	rovrMount := fmt.Sprintf("%s/rovr:/root/.config/rovr", agentJailDir)
@@ -588,25 +625,34 @@ func main() {
 
 	runArgs = append(runArgs, imageName)
 
-	// Handle -A (auto-start agent)
-	if *autoStartPtr {
-		agent := globalConfig.PreferredAgent
-		if agent == "" {
-			agent = chooseEnabledAgent(globalConfig)
+	if globalConfig.ZellijEnabled() {
+		if *autoStartPtr {
+			fmt.Println("Note: -A is no longer needed. The preferred agent launches automatically in the first zellij tab.")
 		}
+		// Launch zellij with the 3-tab layout. mise trust/install runs first so all
+		// tabs see the project's tools from the start.
+		zellijEntrypoint := buildZellijEntrypoint(dirName)
+		chownFix := `if [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true; fi`
+		runArgs = append(runArgs, "sh", "-c", zellijEntrypoint+"; "+chownFix)
+	} else {
+		// Plain shell mode: restore the original -A behaviour.
 		shell := *shellPtr
-		if agent != "" {
-			cmd := agentCommand(agent)
-			// Use -i so the shell rc file is sourced (enables mise PATH activation),
-			// run mise trust/install, then launch the agent, then drop into an interactive shell.
-			initCmd := fmt.Sprintf("mise trust --yes /project && mise install; %s; exec %s", cmd, shell)
-			runArgs = append(runArgs, shell, "-i", "-c", initCmd)
-			fmt.Printf("Auto-starting agent: %s\n", agent)
-		} else {
-			// No agent configured, but -A was passed: trust the project mise file and drop into shell.
-			initCmd := fmt.Sprintf("mise trust --yes /project && mise install; exec %s", shell)
-			runArgs = append(runArgs, shell, "-i", "-c", initCmd)
+		if *autoStartPtr {
+			agent := globalConfig.PreferredAgent
+			if agent == "" {
+				agent = chooseEnabledAgent(globalConfig)
+			}
+			if agent != "" {
+				cmd := agentCommand(agent)
+				initCmd := fmt.Sprintf("mise trust --yes /project && mise install; %s; exec %s", cmd, shell)
+				runArgs = append(runArgs, shell, "-i", "-c", initCmd)
+				fmt.Printf("Auto-starting agent: %s\n", agent)
+			} else {
+				initCmd := fmt.Sprintf("mise trust --yes /project && mise install; exec %s", shell)
+				runArgs = append(runArgs, shell, "-i", "-c", initCmd)
+			}
 		}
+		// No -A and no zellij: rely on the Dockerfile CMD (mise trust/install + shell).
 	}
 
 	fmt.Printf("Exec: docker %v\n", runArgs)

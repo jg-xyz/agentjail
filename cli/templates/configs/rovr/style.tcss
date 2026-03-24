@@ -1,0 +1,5 @@
+.compact-panels {
+  #preview_sidebar {
+    width: 65vw;
+  }
+}
