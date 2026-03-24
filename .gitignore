@@ -4,6 +4,7 @@ dist/agentjail
 cli/agentjail-cli
 .mise/*
 .agentjail/*
+.claude/
 opencode.json
 test_project/
 opencode_config.json

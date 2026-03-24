@@ -7,6 +7,7 @@ AgentJail launches AI coding agents (GitHub Copilot, OpenCode, Claude Code) insi
 
 - Docker
 - Go 1.21+ (to build from source) or download a pre-built binary from `dist/`
+- [mise](https://mise.jdx.dev) *(optional)* — used for the `mise build` shortcut and tool management inside the container
 
 ## Installation
 
@@ -42,7 +43,7 @@ Run from inside a project directory. With no arguments, AgentJail detects an exi
 | `-A` | — | Auto-start the preferred agent |
 | `-b` / `-build` | — | Rebuild the image (uses cache) |
 | `-build-no-cache` | — | Rebuild the image without cache |
-| `-P` | — | Privileged mode — exposes the host Docker socket |
+| `-P` | — | Privileged mode — exposes the host Docker socket and installs the Docker CLI inside the container on startup |
 | `-C <path>` | `opencode.json` | Path to an OpenCode config file |
 | `-E <path>` | — | Editor config file to mount at `/root/<filename>` |
 | `-D <path>` | — | Custom Dockerfile to use |
@@ -309,6 +310,16 @@ agentjail -b
 - `.agentjail/` is automatically added to `.gitignore`
 - Container name is derived from the project directory name (`agentjail.<prefix>`)
 - Running `agentjail` with no args re-enters an existing container for the current directory
+
+### Privileged mode (`-P`)
+
+Passes `--privileged` to `docker run` and mounts `/var/run/docker.sock`, giving the container full access to the host Docker daemon. The Docker CLI (`docker.io`) is automatically installed inside the container on startup if it isn't already present — no image rebuild required.
+
+```sh
+agentjail -P
+```
+
+> **Note:** privileged containers have elevated access to the host. Use only with trusted projects.
 
 ### What's in the image
 

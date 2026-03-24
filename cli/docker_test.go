@@ -56,6 +56,46 @@ func TestGetContainerForDirectory_EmptyOutput(t *testing.T) {
 	}
 }
 
+func TestDockerfile_ZshHistoryConfig(t *testing.T) {
+	path, err := createTempDockerfile()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer os.Remove(path)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("could not read temp Dockerfile: %v", err)
+	}
+	content := string(data)
+
+	for _, want := range []string{"HISTSIZE", "SAVEHIST", "INC_APPEND_HISTORY"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("Dockerfile missing zsh history setting %q", want)
+		}
+	}
+}
+
+func TestDockerfile_BashHistoryConfig(t *testing.T) {
+	path, err := createTempDockerfile()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer os.Remove(path)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("could not read temp Dockerfile: %v", err)
+	}
+	content := string(data)
+
+	for _, want := range []string{"HISTSIZE", "HISTFILESIZE", "histappend", "history -a"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("Dockerfile missing bash history setting %q", want)
+		}
+	}
+}
+
 func TestImageExists_UnknownImage(t *testing.T) {
 	// An image with a clearly nonexistent name should return false (or fail gracefully).
 	result := imageExists("agentjail-test-image-that-does-not-exist-xyz123")
