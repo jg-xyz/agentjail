@@ -98,7 +98,7 @@ func main() {
 			DefaultEditor:        "micro",
 			DefaultShell:         "zsh",
 			MountSystemGitconfig: true,
-			MountGhConfig:        true,
+			MountGhConfigDir:        true,
 			AgentFrameworks: AgentFrameworksConfig{
 				Copilot: FrameworkConfig{Enabled: true},
 			},
@@ -410,7 +410,7 @@ func main() {
 		}
 
 		// Mount gh CLI config (primary auth store used by gh copilot)
-		if globalConfig.MountGhConfig {
+		if globalConfig.MountGhConfigDir {
 			hostGhPath := filepath.Join(usr.HomeDir, ".config", "gh")
 			if _, err := os.Stat(hostGhPath); err == nil {
 				ghMount := fmt.Sprintf("%s:/root/.config/gh", hostGhPath)

@@ -103,7 +103,7 @@ mount_system_gitconfig: true
 
 # Mount ~/.config/gh from the host.
 # Required for gh CLI auth and the Copilot extension.
-mount_gh_config: true
+mount_gh_config_dir: true
 
 # GitHub personal access token to inject as GH_TOKEN.
 # Fallback chain (first non-empty wins):
@@ -260,7 +260,7 @@ Enable in config:
 agent_frameworks:
   copilot:
     enabled: true
-mount_gh_config: true
+mount_gh_config_dir: true
 ```
 
 ### OpenCode

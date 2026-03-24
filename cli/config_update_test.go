@@ -38,7 +38,7 @@ func TestRunConfigUpdateFromPath_AlreadyUpToDate(t *testing.T) {
 	path := writeConfig(t, `default_editor: micro
 default_shell: zsh
 mount_system_gitconfig: true
-mount_gh_config: true
+mount_gh_config_dir: true
 use_zellij: true
 zellij_theme: tokyo-night-storm
 file_browser: rovr
@@ -99,7 +99,7 @@ default_shell: bash
 
 	// Missing fields must be filled with defaults.
 	for _, key := range []string{
-		"mount_system_gitconfig", "mount_gh_config", "use_zellij",
+		"mount_system_gitconfig", "mount_gh_config_dir", "use_zellij",
 		"zellij_theme", "file_browser", "zellij_plugins",
 		"inject_gh_auth_token", "preferred_agent", "github_token",
 		"anthropic_api_key", "container_env_vars", "port_mappings",
@@ -169,7 +169,7 @@ func TestRunConfigUpdateFromPath_AgentFrameworksMissingSubkeys(t *testing.T) {
 	path := writeConfig(t, `default_editor: micro
 default_shell: zsh
 mount_system_gitconfig: true
-mount_gh_config: true
+mount_gh_config_dir: true
 use_zellij: true
 zellij_theme: tokyo-night-storm
 file_browser: rovr

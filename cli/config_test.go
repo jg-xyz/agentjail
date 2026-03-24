@@ -15,7 +15,7 @@ func TestLoadGlobalConfigFromPath_Valid(t *testing.T) {
 default_editor: vim
 default_shell: bash
 mount_system_gitconfig: false
-mount_gh_config: true
+mount_gh_config_dir: true
 github_token: "tok123"
 preferred_agent: "copilot"
 agent_frameworks:
@@ -45,8 +45,8 @@ container_env_vars:
 	if cfg.MountSystemGitconfig {
 		t.Error("MountSystemGitconfig: expected false")
 	}
-	if !cfg.MountGhConfig {
-		t.Error("MountGhConfig: expected true")
+	if !cfg.MountGhConfigDir {
+		t.Error("MountGhConfigDir: expected true")
 	}
 	if cfg.GithubToken != "tok123" {
 		t.Errorf("GithubToken: got %q, want %q", cfg.GithubToken, "tok123")
@@ -95,7 +95,7 @@ func TestLoadGlobalConfigFromPath_RoundTrip(t *testing.T) {
 default_editor: nano
 default_shell: bash
 mount_system_gitconfig: false
-mount_gh_config: true
+mount_gh_config_dir: true
 github_token: mytoken
 preferred_agent: opencode
 agent_frameworks:
@@ -156,7 +156,7 @@ func TestPrintCleanConfig_ContainsExpectedKeys(t *testing.T) {
 		"default_editor",
 		"default_shell",
 		"mount_system_gitconfig",
-		"mount_gh_config",
+		"mount_gh_config_dir",
 		"github_token",
 		"inject_gh_auth_token",
 		"preferred_agent",

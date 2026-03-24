@@ -16,7 +16,7 @@ type GlobalConfig struct {
 	DefaultEditor        string                `yaml:"default_editor"`
 	DefaultShell         string                `yaml:"default_shell"`
 	MountSystemGitconfig bool                  `yaml:"mount_system_gitconfig"`
-	MountGhConfig        bool                  `yaml:"mount_gh_config"`
+	MountGhConfigDir     bool                  `yaml:"mount_gh_config_dir"`
 	GithubToken          string                `yaml:"github_token"`
 	InjectGhAuthToken    bool                  `yaml:"inject_gh_auth_token"`
 	AnthropicApiKey      string                `yaml:"anthropic_api_key"`
@@ -95,7 +95,7 @@ func loadGlobalConfig() (*GlobalConfig, error) {
 			DefaultEditor:        "micro",
 			DefaultShell:         "zsh",
 			MountSystemGitconfig: true,
-			MountGhConfig:        true,
+			MountGhConfigDir:     true,
 			UseZellij:            &trueVal,
 			AgentFrameworks: AgentFrameworksConfig{
 				Copilot: FrameworkConfig{Enabled: true},
@@ -181,7 +181,7 @@ func runConfigUpdateFromPath(configPath string) error {
 			DefaultEditor:        "micro",
 			DefaultShell:         "zsh",
 			MountSystemGitconfig: true,
-			MountGhConfig:        true,
+			MountGhConfigDir:     true,
 			UseZellij:            &trueVal,
 			ZellijTheme:          "tokyo-night-storm",
 			FileBrowser:          "rovr",
@@ -253,8 +253,8 @@ func runConfigUpdateFromPath(configPath string) error {
 	if !topKeys["mount_system_gitconfig"] {
 		addKV("mount_system_gitconfig", scalar("!!bool", "true"), "mount_system_gitconfig: true")
 	}
-	if !topKeys["mount_gh_config"] {
-		addKV("mount_gh_config", scalar("!!bool", "true"), "mount_gh_config: true")
+	if !topKeys["mount_gh_config_dir"] {
+		addKV("mount_gh_config_dir", scalar("!!bool", "true"), "mount_gh_config_dir: true")
 	}
 	if !topKeys["use_zellij"] {
 		addKV("use_zellij", scalar("!!bool", "true"), "use_zellij: true")
@@ -388,7 +388,7 @@ default_shell: zsh
 mount_system_gitconfig: true
 
 # Mount the host ~/.config/gh into the container (used for gh copilot auth)
-mount_gh_config: true
+mount_gh_config_dir: true
 
 # GitHub personal access token (optional; falls back to GH_TOKEN / GITHUB_TOKEN env vars)
 github_token: ""
