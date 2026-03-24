@@ -96,7 +96,7 @@ inject_gh_auth_token: false    # true | false
 #   The agent to launch automatically when the -A flag is used.
 #   Must match the key of an enabled entry under agent_frameworks.
 #
-#   Available values: copilot | opencode
+#   Available values: copilot | opencode | claude
 #   Leave empty to be prompted interactively when using -A.
 #   Default: "" (empty — prompt on -A)
 # --------------------------------------------------------------

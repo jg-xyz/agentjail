@@ -241,6 +241,10 @@ func runConfigUpdate() error {
 		config.FileBrowser = "rovr"
 		added = append(added, "file_browser: rovr")
 	}
+	if _, ok := rawMap["zellij_plugins"]; !ok {
+		config.ZellijPlugins = []ZellijPlugin{}
+		added = append(added, "zellij_plugins: []")
+	}
 	if _, ok := rawMap["inject_gh_auth_token"]; !ok {
 		config.InjectGhAuthToken = false
 		added = append(added, "inject_gh_auth_token: false")
@@ -351,6 +355,12 @@ zellij_theme: tokyo-night-storm
 # Command used for the file browser tab when use_zellij is true.
 # Defaults to "rovr". Set to "yazi" or any other terminal file manager to swap it out.
 file_browser: rovr
+
+# Zellij plugins to load when use_zellij is true.
+# Each entry configures a plugin via path (host file) or url (downloaded and cached).
+zellij_plugins: []
+#   - path: "~/projects/my-plugin/dist/my-plugin.wasm"
+#   - url: "https://example.com/plugins/helper.wasm"
 
 # Anthropic API key for Claude Code (optional; falls back to ANTHROPIC_API_KEY env var)
 anthropic_api_key: ""

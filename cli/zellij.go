@@ -43,7 +43,7 @@ func writeExecutable(path, content string) error {
 // fails with "no active session" when no session exists yet. -n always creates
 // a fresh session regardless of context.
 func buildZellijEntrypoint(sessionName string) string {
-	base := "mise trust --yes /project; mise install; " +
+	base := "mise trust --yes /project && mise install; " +
 		"ZELLIJ_CONFIG_DIR=/root/.agentjail/zellij mise x -- zellij" +
 		" --new-session-with-layout /root/.agentjail/zellij/layout.kdl"
 	if sessionName != "" {

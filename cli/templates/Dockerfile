@@ -135,7 +135,8 @@ RUN . /etc/os-release && \
 RUN cat >> ~/.zshrc <<'OWNERSHIP_FIX'
 
 zshexit() {
-    if [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then
+    # Skip in zellij: the launcher wrapper handles chown once after the session ends.
+    if [ -z "${ZELLIJ}" ] && [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then
         chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true
     fi
 }
@@ -143,7 +144,8 @@ OWNERSHIP_FIX
 
 RUN cat >> ~/.bashrc <<'OWNERSHIP_FIX'
 
-trap 'if [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true; fi' EXIT
+# Skip in zellij: the launcher wrapper handles chown once after the session ends.
+trap 'if [ -z "${ZELLIJ}" ] && [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true; fi' EXIT
 OWNERSHIP_FIX
 
 # install starship
@@ -164,8 +166,8 @@ RUN wget https://github.com/starship/starship/releases/download/v${STARSHIP_VERS
 
 # AgentJail tab launcher: runs AGENTJAIL_TAB_CMD on the first prompt in the tab.
 # AGENTJAIL_TAB_CMD is exported by per-tab wrapper scripts written at launch time.
-# Using precmd_functions guarantees the hook runs after the full .zshrc is sourced
-# (so mise, starship, and aliases are all active when the program starts).
+# Using precmd_functions (zsh) / PROMPT_COMMAND (bash) guarantees the hook runs
+# after the full rc file is sourced (so mise, starship, and aliases are active).
 RUN cat >> ~/.zshrc <<'AGENTJAIL_HOOK'
 
 # AgentJail tab launcher
@@ -177,6 +179,21 @@ if [[ -n "${AGENTJAIL_TAB_CMD}" ]]; then
         eval "${_agentjail_tab_cmd}"
     }
     precmd_functions+=(_agentjail_launch_once)
+fi
+AGENTJAIL_HOOK
+
+RUN cat >> ~/.bashrc <<'AGENTJAIL_HOOK'
+
+# AgentJail tab launcher
+if [ -n "${AGENTJAIL_TAB_CMD}" ]; then
+    _agentjail_tab_cmd="${AGENTJAIL_TAB_CMD}"
+    unset AGENTJAIL_TAB_CMD
+    _agentjail_launch_once() {
+        PROMPT_COMMAND="${PROMPT_COMMAND//_agentjail_launch_once;/}"
+        PROMPT_COMMAND="${PROMPT_COMMAND//_agentjail_launch_once/}"
+        eval "${_agentjail_tab_cmd}"
+    }
+    PROMPT_COMMAND="_agentjail_launch_once;${PROMPT_COMMAND}"
 fi
 AGENTJAIL_HOOK
 
