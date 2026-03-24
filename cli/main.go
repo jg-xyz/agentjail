@@ -68,6 +68,18 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Subcommands (checked after --config pre-scan so os.Args is already clean).
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "config-update":
+			if err := runConfigUpdate(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		}
+	}
+
 	// 0. Load Global Config
 	var globalConfig *GlobalConfig
 	var err error

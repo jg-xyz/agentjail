@@ -4,17 +4,19 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
-	"time"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"text/template"
+	"time"
 )
+
+// containerPluginsDir is the in-container path where zellij plugin .wasm files are stored.
+const containerPluginsDir = "/root/.agentjail/zellij/plugins/"
 
 // shellEscape wraps s in single quotes suitable for POSIX sh assignment.
 // Any single quotes within s are safely escaped.
@@ -201,7 +203,7 @@ func copyPlugins(pluginsDir string, plugins []ZellijPlugin) ([]string, error) {
 		case p.URL != "":
 			n, err := pluginNameFromURL(p.URL)
 			if err != nil {
-				log.Printf("zellij plugin skipped: %v", err)
+				fmt.Printf("Warning: zellij plugin skipped: %v\n", err)
 				continue
 			}
 			name = n
@@ -209,9 +211,9 @@ func copyPlugins(pluginsDir string, plugins []ZellijPlugin) ([]string, error) {
 			if _, err := os.Stat(dst); err == nil {
 				// Already cached — skip download.
 			} else {
-				log.Printf("zellij plugin downloading: %s", p.URL)
+				fmt.Printf("Downloading zellij plugin: %s\n", p.URL)
 				if err := downloadPlugin(dst, p.URL); err != nil {
-					log.Printf("zellij plugin download failed, skipping: %v", err)
+					fmt.Printf("Warning: zellij plugin download failed, skipping: %v\n", err)
 					continue
 				}
 			}
@@ -226,7 +228,7 @@ func copyPlugins(pluginsDir string, plugins []ZellijPlugin) ([]string, error) {
 
 			in, err := os.Open(src)
 			if err != nil {
-				log.Printf("zellij plugin not found, skipping: %s (%v)", src, err)
+				fmt.Printf("Warning: zellij plugin not found, skipping: %s (%v)\n", src, err)
 				continue
 			}
 			out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
@@ -242,11 +244,11 @@ func copyPlugins(pluginsDir string, plugins []ZellijPlugin) ([]string, error) {
 			}
 
 		default:
-			log.Printf("zellij plugin entry has neither path nor url, skipping")
+			fmt.Printf("Warning: zellij plugin entry has neither path nor url, skipping\n")
 			continue
 		}
 
-		containerPaths = append(containerPaths, "/root/.agentjail/zellij/plugins/"+name)
+		containerPaths = append(containerPaths, containerPluginsDir+name)
 	}
 	return containerPaths, nil
 }

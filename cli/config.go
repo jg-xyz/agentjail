@@ -115,6 +115,16 @@ func loadGlobalConfig() (*GlobalConfig, error) {
 		return nil, err
 	}
 
+	// Warn if the old "claude_code" key is present; it was renamed to "claude".
+	var rawMap map[string]interface{}
+	if yaml.Unmarshal(data, &rawMap) == nil {
+		if af, ok := rawMap["agent_frameworks"].(map[string]interface{}); ok {
+			if _, hasOld := af["claude_code"]; hasOld {
+				fmt.Println("Warning: 'claude_code' in agent_frameworks has been renamed to 'claude'. Please update your config.")
+			}
+		}
+	}
+
 	return &config, nil
 }
 
@@ -147,6 +157,154 @@ func loadGlobalConfigFromPath(path string) (*GlobalConfig, error) {
 		return nil, fmt.Errorf("failed to parse config file %s: %w", path, err)
 	}
 	return &config, nil
+}
+
+// runConfigUpdate reads the existing config file, detects any missing top-level
+// (and agent_frameworks sub-) keys, fills them in with their default values, and
+// writes the file back. It prints a summary of what was added.
+func runConfigUpdate() error {
+	configPath, err := getGlobalConfigPath()
+	if err != nil {
+		return err
+	}
+
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		fmt.Println("Config file does not exist. Creating with defaults...")
+		trueVal := true
+		config := &GlobalConfig{
+			DefaultEditor:        "micro",
+			DefaultShell:         "zsh",
+			MountSystemGitconfig: true,
+			MountGhConfig:        true,
+			UseZellij:            &trueVal,
+			ZellijTheme:          "tokyo-night-storm",
+			FileBrowser:          "rovr",
+			AgentFrameworks: AgentFrameworksConfig{
+				Copilot: FrameworkConfig{Enabled: true},
+			},
+		}
+		if err := saveGlobalConfig(config); err != nil {
+			return err
+		}
+		fmt.Printf("Created %s\n", configPath)
+		return nil
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read config: %w", err)
+	}
+
+	// Parse as generic map to detect which keys are actually present in the file.
+	var rawMap map[string]interface{}
+	if err := yaml.Unmarshal(data, &rawMap); err != nil {
+		return fmt.Errorf("failed to parse config: %w", err)
+	}
+	if rawMap == nil {
+		rawMap = make(map[string]interface{})
+	}
+
+	// Parse into the typed struct for modification.
+	var config GlobalConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	var added []string
+
+	if _, ok := rawMap["default_editor"]; !ok {
+		config.DefaultEditor = "micro"
+		added = append(added, "default_editor: micro")
+	}
+	if _, ok := rawMap["default_shell"]; !ok {
+		config.DefaultShell = "zsh"
+		added = append(added, "default_shell: zsh")
+	}
+	if _, ok := rawMap["mount_system_gitconfig"]; !ok {
+		config.MountSystemGitconfig = true
+		added = append(added, "mount_system_gitconfig: true")
+	}
+	if _, ok := rawMap["mount_gh_config"]; !ok {
+		config.MountGhConfig = true
+		added = append(added, "mount_gh_config: true")
+	}
+	if _, ok := rawMap["use_zellij"]; !ok {
+		trueVal := true
+		config.UseZellij = &trueVal
+		added = append(added, "use_zellij: true")
+	}
+	if _, ok := rawMap["zellij_theme"]; !ok {
+		config.ZellijTheme = "tokyo-night-storm"
+		added = append(added, "zellij_theme: tokyo-night-storm")
+	}
+	if _, ok := rawMap["file_browser"]; !ok {
+		config.FileBrowser = "rovr"
+		added = append(added, "file_browser: rovr")
+	}
+	if _, ok := rawMap["inject_gh_auth_token"]; !ok {
+		config.InjectGhAuthToken = false
+		added = append(added, "inject_gh_auth_token: false")
+	}
+	if _, ok := rawMap["preferred_agent"]; !ok {
+		config.PreferredAgent = ""
+		added = append(added, "preferred_agent: \"\"")
+	}
+	if _, ok := rawMap["github_token"]; !ok {
+		config.GithubToken = ""
+		added = append(added, "github_token: \"\"")
+	}
+	if _, ok := rawMap["anthropic_api_key"]; !ok {
+		config.AnthropicApiKey = ""
+		added = append(added, "anthropic_api_key: \"\"")
+	}
+	if _, ok := rawMap["container_env_vars"]; !ok {
+		if config.ContainerEnvVars == nil {
+			config.ContainerEnvVars = map[string]string{}
+		}
+		added = append(added, "container_env_vars: {}")
+	}
+	if _, ok := rawMap["port_mappings"]; !ok {
+		if config.PortMappings == nil {
+			config.PortMappings = []string{}
+		}
+		added = append(added, "port_mappings: []")
+	}
+
+	// agent_frameworks: check top-level key and each sub-framework.
+	if agentRaw, ok := rawMap["agent_frameworks"]; !ok {
+		config.AgentFrameworks = AgentFrameworksConfig{
+			Copilot: FrameworkConfig{Enabled: true},
+		}
+		added = append(added, "agent_frameworks.opencode.enabled: false")
+		added = append(added, "agent_frameworks.copilot.enabled: true")
+		added = append(added, "agent_frameworks.claude.enabled: false")
+	} else if agentMap, ok := agentRaw.(map[string]interface{}); ok {
+		if _, ok := agentMap["opencode"]; !ok {
+			added = append(added, "agent_frameworks.opencode.enabled: false")
+		}
+		if _, ok := agentMap["copilot"]; !ok {
+			config.AgentFrameworks.Copilot = FrameworkConfig{Enabled: true}
+			added = append(added, "agent_frameworks.copilot.enabled: true")
+		}
+		if _, ok := agentMap["claude"]; !ok {
+			added = append(added, "agent_frameworks.claude.enabled: false")
+		}
+	}
+
+	if len(added) == 0 {
+		fmt.Printf("Config is already up to date (%s). No changes needed.\n", configPath)
+		return nil
+	}
+
+	if err := saveGlobalConfig(&config); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	fmt.Printf("Updated %s — added %d missing properties:\n", configPath, len(added))
+	for _, a := range added {
+		fmt.Printf("  + %s\n", a)
+	}
+	return nil
 }
 
 // printCleanConfig prints a clean, commented config template to stdout.

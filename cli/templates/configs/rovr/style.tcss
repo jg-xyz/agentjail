@@ -1,5 +1,5 @@
 .compact-panels {
   #preview_sidebar {
-    width: 65vw; /* or whatever value you want */
+    width: 65vw;
   }
 }
