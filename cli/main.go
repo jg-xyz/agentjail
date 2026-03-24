@@ -78,6 +78,12 @@ func main() {
 				log.Fatalf("%v", err)
 			}
 			return
+		case "config-update":
+			log.Warn("'config-update' is deprecated, use 'update-config' instead")
+			if err := runConfigUpdate(); err != nil {
+				log.Fatalf("%v", err)
+			}
+			return
 		}
 	}
 

@@ -172,7 +172,7 @@ func runConfigUpdate() error {
 
 // runConfigUpdateFromPath detects any missing top-level (and agent_frameworks sub-)
 // keys in the config file at configPath, fills them in with their default values,
-// and writes the file back. It preserves existing comments and formatting.
+// and writes the file back. It preserves existing comments.
 func runConfigUpdateFromPath(configPath string) error {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		log.Info("config file does not exist, creating with defaults")
@@ -329,9 +329,17 @@ func runConfigUpdateFromPath(configPath string) error {
 	}
 
 	// Back up the existing config before writing.
-	backupPath := fmt.Sprintf("%s.bkup.%d", configPath, time.Now().Unix())
-	if err := os.WriteFile(backupPath, data, 0644); err != nil {
+	backupPath := fmt.Sprintf("%s.bkup.%d", configPath, time.Now().UnixNano())
+	f, err := os.OpenFile(backupPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
 		return fmt.Errorf("failed to create config backup: %w", err)
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return fmt.Errorf("failed to write config backup: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close config backup: %w", err)
 	}
 	log.Infof("backed up config to %s", backupPath)
 
