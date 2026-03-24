@@ -35,7 +35,7 @@ func createAgentJailFolder(baseDir string) (string, error) {
 		historyFile := filepath.Join(agentJailDir, histFile)
 		if _, err := os.Stat(historyFile); os.IsNotExist(err) {
 			if err := os.WriteFile(historyFile, []byte{}, 0644); err != nil {
-				return "", fmt.Errorf("failed to create history file: %w", err)
+				return "", fmt.Errorf("failed to create history file %q at %q: %w", histFile, historyFile, err)
 			}
 		}
 	}

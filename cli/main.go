@@ -231,7 +231,17 @@ func main() {
 		// Determine Dockerfile to use
 		if *dockerfilePtr != "" {
 			// User provided via -D flag
-			dockerfilePath, _ = filepath.Abs(*dockerfilePtr)
+			absPath, err := filepath.Abs(*dockerfilePtr)
+			if err != nil {
+				log.Fatalf("resolving Dockerfile path %q: %v", *dockerfilePtr, err)
+			}
+			if _, err := os.Stat(absPath); err != nil {
+				if os.IsNotExist(err) {
+					log.Fatalf("Dockerfile not found at %q (from -D flag)", absPath)
+				}
+				log.Fatalf("checking Dockerfile path %q: %v", absPath, err)
+			}
+			dockerfilePath = absPath
 		} else {
 			// Always use the embedded template unless -D is specified
 			log.Info("using embedded Dockerfile template")
@@ -617,7 +627,7 @@ func main() {
 	// already installed in the image.
 	dockerSetup := ""
 	if *privilegedPtr {
-		dockerSetup = "command -v docker >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq docker-ce-cli); "
+		dockerSetup = "command -v docker >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq docker-ce-cli && apt-get clean && rm -rf /var/lib/apt/lists/*); "
 		log.Info("privileged mode: will install Docker CLI on startup if not already present")
 	}
 

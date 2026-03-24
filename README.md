@@ -313,7 +313,7 @@ agentjail -b
 
 ### Privileged mode (`-P`)
 
-Passes `--privileged` to `docker run` and mounts `/var/run/docker.sock`, giving the container full access to the host Docker daemon. The Docker CLI (`docker.io`) is automatically installed inside the container on startup if it isn't already present — no image rebuild required.
+Passes `--privileged` to `docker run` and mounts `/var/run/docker.sock`, giving the container full access to the host Docker daemon. The Docker CLI (`docker-ce-cli`) is automatically installed inside the container on startup if it isn't already present — no image rebuild required.
 
 ```sh
 agentjail -P
