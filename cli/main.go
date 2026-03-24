@@ -230,27 +230,27 @@ func main() {
 
 		// Determine Dockerfile to use
 		if *dockerfilePtr != "" {
-			// User provided
-			dockerfilePath, _ = filepath.Abs(*dockerfilePtr)
-		} else {
-			// Check local
-			localDf := filepath.Join(cwd, "Dockerfile")
-			localDfLower := filepath.Join(cwd, "dockerfile")
-
-			if _, err := os.Stat(localDf); err == nil {
-				dockerfilePath = localDf
-			} else if _, err := os.Stat(localDfLower); err == nil {
-				dockerfilePath = localDfLower
-			} else {
-				// Create temp
-				log.Info("no local Dockerfile found, using embedded template")
-				tmpPath, err := createTempDockerfile()
-				if err != nil {
-					log.Fatalf("creating temp Dockerfile: %v", err)
-				}
-				dockerfilePath = tmpPath
-				usingTemp = true
+			// User provided via -D flag
+			absPath, err := filepath.Abs(*dockerfilePtr)
+			if err != nil {
+				log.Fatalf("resolving Dockerfile path %q: %v", *dockerfilePtr, err)
 			}
+			if _, err := os.Stat(absPath); err != nil {
+				if os.IsNotExist(err) {
+					log.Fatalf("Dockerfile not found at %q (from -D flag)", absPath)
+				}
+				log.Fatalf("checking Dockerfile path %q: %v", absPath, err)
+			}
+			dockerfilePath = absPath
+		} else {
+			// Always use the embedded template unless -D is specified
+			log.Info("using embedded Dockerfile template")
+			tmpPath, err := createTempDockerfile()
+			if err != nil {
+				log.Fatalf("creating temp Dockerfile: %v", err)
+			}
+			dockerfilePath = tmpPath
+			usingTemp = true
 		}
 
 		log.Infof("building with Dockerfile: %s", dockerfilePath)
@@ -622,6 +622,15 @@ func main() {
 
 	runArgs = append(runArgs, imageName)
 
+	// When privileged mode is requested, ensure the Docker CLI is available inside
+	// the container. The guard (command -v docker) makes this a no-op if it is
+	// already installed in the image.
+	dockerSetup := ""
+	if *privilegedPtr {
+		dockerSetup = "command -v docker >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq docker-ce-cli && apt-get clean && rm -rf /var/lib/apt/lists/*); "
+		log.Info("privileged mode: will install Docker CLI on startup if not already present")
+	}
+
 	if globalConfig.ZellijEnabled() {
 		if *autoStartPtr {
 			log.Info("-A flag is no longer needed; the preferred agent launches automatically in the first zellij tab")
@@ -630,7 +639,7 @@ func main() {
 		// tabs see the project's tools from the start.
 		zellijEntrypoint := buildZellijEntrypoint(dirName)
 		chownFix := `if [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true; fi`
-		runArgs = append(runArgs, "sh", "-c", zellijEntrypoint+"; "+chownFix)
+		runArgs = append(runArgs, "sh", "-c", dockerSetup+zellijEntrypoint+"; "+chownFix)
 	} else {
 		// Plain shell mode: restore the original -A behaviour.
 		shell := *shellPtr
@@ -641,15 +650,20 @@ func main() {
 			}
 			if agent != "" {
 				cmd := agentCommand(agent)
-				initCmd := fmt.Sprintf("mise trust --yes /project && mise install; %s; exec %s", cmd, shell)
+				initCmd := fmt.Sprintf("%smise trust --yes /project && mise install; %s; exec %s", dockerSetup, cmd, shell)
 				runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 				log.Infof("auto-starting agent: %s", agent)
 			} else {
-				initCmd := fmt.Sprintf("mise trust --yes /project && mise install; exec %s", shell)
+				initCmd := fmt.Sprintf("%smise trust --yes /project && mise install; exec %s", dockerSetup, shell)
 				runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 			}
+		} else if dockerSetup != "" {
+			// No -A and no zellij, but privileged: override the Dockerfile CMD so
+			// we can prepend the Docker CLI install before dropping into the shell.
+			initCmd := fmt.Sprintf("%smise trust --yes /project && mise install; exec %s", dockerSetup, shell)
+			runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 		}
-		// No -A and no zellij: rely on the Dockerfile CMD (mise trust/install + shell).
+		// No -A, no zellij, no privileged: rely on the Dockerfile CMD (mise trust/install + shell).
 	}
 
 	log.Debugf("exec: docker %v", runArgs)

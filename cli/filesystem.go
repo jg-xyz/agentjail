@@ -31,10 +31,12 @@ func createAgentJailFolder(baseDir string) (string, error) {
 		return "", fmt.Errorf("failed to create .agentjail directory: %w", err)
 	}
 
-	historyFile := filepath.Join(agentJailDir, "bash_history")
-	if _, err := os.Stat(historyFile); os.IsNotExist(err) {
-		if err := os.WriteFile(historyFile, []byte{}, 0644); err != nil {
-			return "", fmt.Errorf("failed to create history file: %w", err)
+	for _, histFile := range []string{"bash_history", "zsh_history"} {
+		historyFile := filepath.Join(agentJailDir, histFile)
+		if _, err := os.Stat(historyFile); os.IsNotExist(err) {
+			if err := os.WriteFile(historyFile, []byte{}, 0644); err != nil {
+				return "", fmt.Errorf("failed to create history file %q at %q: %w", histFile, historyFile, err)
+			}
 		}
 	}
 

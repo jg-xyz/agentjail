@@ -30,6 +30,14 @@ RUN apt-get update && apt-get install -y \
     zsh \
     && rm -rf /var/lib/apt/lists/*
 
+# Pre-configure Docker's official apt repository so docker-ce-cli can be
+# installed at runtime (when -P is used) without pulling in the full daemon.
+RUN install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && \
+    chmod a+r /etc/apt/keyrings/docker.asc && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+    | tee /etc/apt/sources.list.d/docker.list > /dev/null
+
 ENV SHELL=${SHELL}
 
 # configure zsh
@@ -67,6 +75,22 @@ RUN mise use -g \
 # Configure micro: unbind Ctrl+t which zellij intercepts for new-tab
 RUN mkdir -p /root/.config/micro && \
     printf '{"CtrlT": "None"}\n' > /root/.config/micro/bindings.json
+
+# shell history configuration
+# HISTFILE is injected at runtime by agentjail pointing to /root/.agentjail/<shell>_history
+RUN cat >> ~/.zshrc <<'HISTCONF'
+HISTSIZE=10000
+SAVEHIST=10000
+setopt INC_APPEND_HISTORY
+setopt HIST_IGNORE_DUPS
+HISTCONF
+
+RUN cat >> ~/.bashrc <<'HISTCONF'
+HISTSIZE=10000
+HISTFILESIZE=10000
+shopt -s histappend
+PROMPT_COMMAND="${PROMPT_COMMAND:+${PROMPT_COMMAND}$'\n'}history -a"
+HISTCONF
 
 # aliases
 RUN echo "alias files='rovr'" >> ~/.${SHELL}rc && \

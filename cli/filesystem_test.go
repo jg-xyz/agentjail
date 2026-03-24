@@ -38,6 +38,45 @@ func TestCreateAgentJailFolder_CreatesBashHistory(t *testing.T) {
 	}
 }
 
+func TestCreateAgentJailFolder_CreatesZshHistory(t *testing.T) {
+	base := t.TempDir()
+
+	dir, err := createAgentJailFolder(base)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	historyFile := filepath.Join(dir, "zsh_history")
+	if _, err := os.Stat(historyFile); os.IsNotExist(err) {
+		t.Error("zsh_history file was not created")
+	}
+}
+
+func TestCreateAgentJailFolder_DoesNotOverwriteZshHistory(t *testing.T) {
+	base := t.TempDir()
+
+	agentDir := filepath.Join(base, ".agentjail")
+	if err := os.MkdirAll(agentDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	historyFile := filepath.Join(agentDir, "zsh_history")
+	if err := os.WriteFile(historyFile, []byte("existing zsh history"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := createAgentJailFolder(base); err != nil {
+		t.Fatalf("unexpected error on second call: %v", err)
+	}
+
+	data, err := os.ReadFile(historyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "existing zsh history" {
+		t.Errorf("zsh_history was overwritten; got %q", string(data))
+	}
+}
+
 func TestCreateAgentJailFolder_Idempotent(t *testing.T) {
 	base := t.TempDir()
 
