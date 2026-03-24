@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -14,7 +16,7 @@ type GlobalConfig struct {
 	DefaultEditor        string                `yaml:"default_editor"`
 	DefaultShell         string                `yaml:"default_shell"`
 	MountSystemGitconfig bool                  `yaml:"mount_system_gitconfig"`
-	MountGhConfig        bool                  `yaml:"mount_gh_config"`
+	MountGhConfigDir     bool                  `yaml:"mount_gh_config_dir"`
 	GithubToken          string                `yaml:"github_token"`
 	InjectGhAuthToken    bool                  `yaml:"inject_gh_auth_token"`
 	AnthropicApiKey      string                `yaml:"anthropic_api_key"`
@@ -93,7 +95,7 @@ func loadGlobalConfig() (*GlobalConfig, error) {
 			DefaultEditor:        "micro",
 			DefaultShell:         "zsh",
 			MountSystemGitconfig: true,
-			MountGhConfig:        true,
+			MountGhConfigDir:     true,
 			UseZellij:            &trueVal,
 			AgentFrameworks: AgentFrameworksConfig{
 				Copilot: FrameworkConfig{Enabled: true},
@@ -120,7 +122,7 @@ func loadGlobalConfig() (*GlobalConfig, error) {
 	if yaml.Unmarshal(data, &rawMap) == nil {
 		if af, ok := rawMap["agent_frameworks"].(map[string]interface{}); ok {
 			if _, hasOld := af["claude_code"]; hasOld {
-				fmt.Println("Warning: 'claude_code' in agent_frameworks has been renamed to 'claude'. Please update your config.")
+				log.Warn("'claude_code' in agent_frameworks has been renamed to 'claude'; please update your config")
 			}
 		}
 	}
@@ -159,23 +161,27 @@ func loadGlobalConfigFromPath(path string) (*GlobalConfig, error) {
 	return &config, nil
 }
 
-// runConfigUpdate reads the existing config file, detects any missing top-level
-// (and agent_frameworks sub-) keys, fills them in with their default values, and
-// writes the file back. It prints a summary of what was added.
+// runConfigUpdate resolves the global config path and delegates to runConfigUpdateFromPath.
 func runConfigUpdate() error {
 	configPath, err := getGlobalConfigPath()
 	if err != nil {
 		return err
 	}
+	return runConfigUpdateFromPath(configPath)
+}
 
+// runConfigUpdateFromPath detects any missing top-level (and agent_frameworks sub-)
+// keys in the config file at configPath, fills them in with their default values,
+// and writes the file back. It preserves existing comments.
+func runConfigUpdateFromPath(configPath string) error {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		fmt.Println("Config file does not exist. Creating with defaults...")
+		log.Info("config file does not exist, creating with defaults")
 		trueVal := true
 		config := &GlobalConfig{
 			DefaultEditor:        "micro",
 			DefaultShell:         "zsh",
 			MountSystemGitconfig: true,
-			MountGhConfig:        true,
+			MountGhConfigDir:     true,
 			UseZellij:            &trueVal,
 			ZellijTheme:          "tokyo-night-storm",
 			FileBrowser:          "rovr",
@@ -183,10 +189,17 @@ func runConfigUpdate() error {
 				Copilot: FrameworkConfig{Enabled: true},
 			},
 		}
-		if err := saveGlobalConfig(config); err != nil {
+		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 			return err
 		}
-		fmt.Printf("Created %s\n", configPath)
+		data, err := yaml.Marshal(config)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(configPath, data, 0644); err != nil {
+			return err
+		}
+		log.Infof("created %s", configPath)
 		return nil
 	}
 
@@ -195,120 +208,177 @@ func runConfigUpdate() error {
 		return fmt.Errorf("failed to read config: %w", err)
 	}
 
-	// Parse as generic map to detect which keys are actually present in the file.
-	var rawMap map[string]interface{}
-	if err := yaml.Unmarshal(data, &rawMap); err != nil {
+	// Parse into a yaml.Node tree so comments are preserved on round-trip.
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return fmt.Errorf("failed to parse config: %w", err)
-	}
-	if rawMap == nil {
-		rawMap = make(map[string]interface{})
 	}
 
-	// Parse into the typed struct for modification.
-	var config GlobalConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return fmt.Errorf("failed to parse config: %w", err)
+	// Handle empty file.
+	if doc.Kind == 0 || len(doc.Content) == 0 {
+		doc = yaml.Node{
+			Kind: yaml.DocumentNode,
+			Content: []*yaml.Node{
+				{Kind: yaml.MappingNode, Tag: "!!map"},
+			},
+		}
+	}
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return fmt.Errorf("expected YAML mapping at document root")
+	}
+
+	// Index existing top-level keys (mapping nodes are key, value, key, value, …).
+	topKeys := make(map[string]bool, len(root.Content)/2)
+	for i := 0; i < len(root.Content)-1; i += 2 {
+		topKeys[root.Content[i].Value] = true
 	}
 
 	var added []string
 
-	if _, ok := rawMap["default_editor"]; !ok {
-		config.DefaultEditor = "micro"
-		added = append(added, "default_editor: micro")
+	scalar := func(tag, value string) *yaml.Node {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: tag, Value: value}
 	}
-	if _, ok := rawMap["default_shell"]; !ok {
-		config.DefaultShell = "zsh"
-		added = append(added, "default_shell: zsh")
-	}
-	if _, ok := rawMap["mount_system_gitconfig"]; !ok {
-		config.MountSystemGitconfig = true
-		added = append(added, "mount_system_gitconfig: true")
-	}
-	if _, ok := rawMap["mount_gh_config"]; !ok {
-		config.MountGhConfig = true
-		added = append(added, "mount_gh_config: true")
-	}
-	if _, ok := rawMap["use_zellij"]; !ok {
-		trueVal := true
-		config.UseZellij = &trueVal
-		added = append(added, "use_zellij: true")
-	}
-	if _, ok := rawMap["zellij_theme"]; !ok {
-		config.ZellijTheme = "tokyo-night-storm"
-		added = append(added, "zellij_theme: tokyo-night-storm")
-	}
-	if _, ok := rawMap["file_browser"]; !ok {
-		config.FileBrowser = "rovr"
-		added = append(added, "file_browser: rovr")
-	}
-	if _, ok := rawMap["zellij_plugins"]; !ok {
-		config.ZellijPlugins = []ZellijPlugin{}
-		added = append(added, "zellij_plugins: []")
-	}
-	if _, ok := rawMap["inject_gh_auth_token"]; !ok {
-		config.InjectGhAuthToken = false
-		added = append(added, "inject_gh_auth_token: false")
-	}
-	if _, ok := rawMap["preferred_agent"]; !ok {
-		config.PreferredAgent = ""
-		added = append(added, "preferred_agent: \"\"")
-	}
-	if _, ok := rawMap["github_token"]; !ok {
-		config.GithubToken = ""
-		added = append(added, "github_token: \"\"")
-	}
-	if _, ok := rawMap["anthropic_api_key"]; !ok {
-		config.AnthropicApiKey = ""
-		added = append(added, "anthropic_api_key: \"\"")
-	}
-	if _, ok := rawMap["container_env_vars"]; !ok {
-		if config.ContainerEnvVars == nil {
-			config.ContainerEnvVars = map[string]string{}
-		}
-		added = append(added, "container_env_vars: {}")
-	}
-	if _, ok := rawMap["port_mappings"]; !ok {
-		if config.PortMappings == nil {
-			config.PortMappings = []string{}
-		}
-		added = append(added, "port_mappings: []")
+	addKV := func(key string, val *yaml.Node, desc string) {
+		root.Content = append(root.Content, scalar("!!str", key), val)
+		added = append(added, desc)
 	}
 
-	// agent_frameworks: check top-level key and each sub-framework.
-	if agentRaw, ok := rawMap["agent_frameworks"]; !ok {
-		config.AgentFrameworks = AgentFrameworksConfig{
-			Copilot: FrameworkConfig{Enabled: true},
+	if !topKeys["default_editor"] {
+		addKV("default_editor", scalar("!!str", "micro"), "default_editor: micro")
+	}
+	if !topKeys["default_shell"] {
+		addKV("default_shell", scalar("!!str", "zsh"), "default_shell: zsh")
+	}
+	if !topKeys["mount_system_gitconfig"] {
+		addKV("mount_system_gitconfig", scalar("!!bool", "true"), "mount_system_gitconfig: true")
+	}
+	if !topKeys["mount_gh_config_dir"] {
+		addKV("mount_gh_config_dir", scalar("!!bool", "true"), "mount_gh_config_dir: true")
+	}
+	if !topKeys["use_zellij"] {
+		addKV("use_zellij", scalar("!!bool", "true"), "use_zellij: true")
+	}
+	if !topKeys["zellij_theme"] {
+		addKV("zellij_theme", scalar("!!str", "tokyo-night-storm"), "zellij_theme: tokyo-night-storm")
+	}
+	if !topKeys["file_browser"] {
+		addKV("file_browser", scalar("!!str", "rovr"), "file_browser: rovr")
+	}
+	if !topKeys["zellij_plugins"] {
+		addKV("zellij_plugins", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}, "zellij_plugins: []")
+	}
+	if !topKeys["inject_gh_auth_token"] {
+		addKV("inject_gh_auth_token", scalar("!!bool", "false"), "inject_gh_auth_token: false")
+	}
+	if !topKeys["preferred_agent"] {
+		addKV("preferred_agent", scalar("!!str", ""), "preferred_agent: \"\"")
+	}
+	if !topKeys["github_token"] {
+		addKV("github_token", scalar("!!str", ""), "github_token: \"\"")
+	}
+	if !topKeys["anthropic_api_key"] {
+		addKV("anthropic_api_key", scalar("!!str", ""), "anthropic_api_key: \"\"")
+	}
+	if !topKeys["container_env_vars"] {
+		addKV("container_env_vars", &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}, "container_env_vars: {}")
+	}
+	if !topKeys["port_mappings"] {
+		addKV("port_mappings", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}, "port_mappings: []")
+	}
+
+	// agent_frameworks: add the whole block if missing, or fill in missing sub-frameworks.
+	frameworks := []struct {
+		name    string
+		enabled bool
+	}{{"opencode", false}, {"copilot", true}, {"claude", false}}
+
+	if !topKeys["agent_frameworks"] {
+		afNode := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		for _, fw := range frameworks {
+			afNode.Content = append(afNode.Content, frameworkNodes(fw.name, fw.enabled)...)
+			added = append(added, fmt.Sprintf("agent_frameworks.%s.enabled: %v", fw.name, fw.enabled))
 		}
-		added = append(added, "agent_frameworks.opencode.enabled: false")
-		added = append(added, "agent_frameworks.copilot.enabled: true")
-		added = append(added, "agent_frameworks.claude.enabled: false")
-	} else if agentMap, ok := agentRaw.(map[string]interface{}); ok {
-		if _, ok := agentMap["opencode"]; !ok {
-			added = append(added, "agent_frameworks.opencode.enabled: false")
+		root.Content = append(root.Content, scalar("!!str", "agent_frameworks"), afNode)
+	} else {
+		// Find the agent_frameworks value node.
+		var afVal *yaml.Node
+		for i := 0; i < len(root.Content)-1; i += 2 {
+			if root.Content[i].Value == "agent_frameworks" {
+				afVal = root.Content[i+1]
+				break
+			}
 		}
-		if _, ok := agentMap["copilot"]; !ok {
-			config.AgentFrameworks.Copilot = FrameworkConfig{Enabled: true}
-			added = append(added, "agent_frameworks.copilot.enabled: true")
-		}
-		if _, ok := agentMap["claude"]; !ok {
-			added = append(added, "agent_frameworks.claude.enabled: false")
+		if afVal != nil && afVal.Kind == yaml.MappingNode {
+			afKeys := make(map[string]bool, len(afVal.Content)/2)
+			for i := 0; i < len(afVal.Content)-1; i += 2 {
+				afKeys[afVal.Content[i].Value] = true
+			}
+			for _, fw := range frameworks {
+				if !afKeys[fw.name] {
+					afVal.Content = append(afVal.Content, frameworkNodes(fw.name, fw.enabled)...)
+					added = append(added, fmt.Sprintf("agent_frameworks.%s.enabled: %v", fw.name, fw.enabled))
+				}
+			}
 		}
 	}
 
 	if len(added) == 0 {
-		fmt.Printf("Config is already up to date (%s). No changes needed.\n", configPath)
+		log.Infof("config is already up to date (%s)", configPath)
 		return nil
 	}
 
-	if err := saveGlobalConfig(&config); err != nil {
+	// Back up the existing config before writing.
+	backupPath := fmt.Sprintf("%s.bkup.%d", configPath, time.Now().UnixNano())
+	f, err := os.OpenFile(backupPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to create config backup: %w", err)
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return fmt.Errorf("failed to write config backup: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close config backup: %w", err)
+	}
+	log.Infof("backed up config to %s", backupPath)
+
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(root); err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+	if err := enc.Close(); err != nil {
+		return fmt.Errorf("failed to finalise config encoding: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, buf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	fmt.Printf("Updated %s — added %d missing properties:\n", configPath, len(added))
+	log.Infof("updated %s — added %d missing fields:", configPath, len(added))
 	for _, a := range added {
-		fmt.Printf("  + %s\n", a)
+		log.Infof("  + %s", a)
 	}
 	return nil
+}
+
+// frameworkNodes returns the key+value yaml.Node pair for an agent framework entry.
+func frameworkNodes(name string, enabled bool) []*yaml.Node {
+	enabledStr := "false"
+	if enabled {
+		enabledStr = "true"
+	}
+	return []*yaml.Node{
+		{Kind: yaml.ScalarNode, Tag: "!!str", Value: name},
+		{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "enabled"},
+			{Kind: yaml.ScalarNode, Tag: "!!bool", Value: enabledStr},
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "plugins"},
+			{Kind: yaml.SequenceNode, Tag: "!!seq"},
+		}},
+	}
 }
 
 // printCleanConfig prints a clean, commented config template to stdout.
@@ -326,7 +396,7 @@ default_shell: zsh
 mount_system_gitconfig: true
 
 # Mount the host ~/.config/gh into the container (used for gh copilot auth)
-mount_gh_config: true
+mount_gh_config_dir: true
 
 # GitHub personal access token (optional; falls back to GH_TOKEN / GITHUB_TOKEN env vars)
 github_token: ""

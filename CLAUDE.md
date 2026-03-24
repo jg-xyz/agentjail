@@ -67,7 +67,7 @@ Bundled via Go embed. Contains:
 Global config at `~/.config/agentjail/config.yaml`. Schema documented in `config_schema.yaml`. Key fields:
 - `agent_frameworks` — enable/configure Copilot and OpenCode
 - `preferred_agent` — auto-selected with `-A`
-- `mount_system_gitconfig`, `mount_gh_config` — host credential sharing
+- `mount_system_gitconfig`, `mount_gh_config_dir` — host credential sharing
 - `inject_gh_auth_token` — inject `GITHUB_TOKEN` into container
 - `container_env_vars` — custom env vars (supports `$ENV_VAR` references)
 - `port_mappings` — forwarded ports

@@ -32,6 +32,8 @@ func agentCommand(name string) string {
 }
 
 // chooseEnabledAgent shows an interactive prompt and returns the chosen agent name.
+// fmt is used intentionally here for the interactive UI — these writes must go
+// directly to stdout without logrus level prefixes.
 func chooseEnabledAgent(config *GlobalConfig) string {
 	agents := enabledAgents(config)
 	if len(agents) == 0 {

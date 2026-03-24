@@ -44,7 +44,7 @@ mount_system_gitconfig: true   # true | false
 
 
 # --------------------------------------------------------------
-# mount_gh_config
+# mount_gh_config_dir
 #   When true, mounts ~/.config/gh from the host into the
 #   container. This is the primary authentication store for the
 #   gh CLI and the GitHub Copilot extension.
@@ -52,7 +52,7 @@ mount_system_gitconfig: true   # true | false
 #   Values: true | false
 #   Default: true
 # --------------------------------------------------------------
-mount_gh_config: true          # true | false
+mount_gh_config_dir: true          # true | false
 
 
 # --------------------------------------------------------------

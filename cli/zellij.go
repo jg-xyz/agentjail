@@ -203,7 +203,7 @@ func copyPlugins(pluginsDir string, plugins []ZellijPlugin) ([]string, error) {
 		case p.URL != "":
 			n, err := pluginNameFromURL(p.URL)
 			if err != nil {
-				fmt.Printf("Warning: zellij plugin skipped: %v\n", err)
+				log.Warnf("zellij plugin skipped: %v", err)
 				continue
 			}
 			name = n
@@ -211,9 +211,9 @@ func copyPlugins(pluginsDir string, plugins []ZellijPlugin) ([]string, error) {
 			if _, err := os.Stat(dst); err == nil {
 				// Already cached — skip download.
 			} else {
-				fmt.Printf("Downloading zellij plugin: %s\n", p.URL)
+				log.Infof("downloading zellij plugin: %s", p.URL)
 				if err := downloadPlugin(dst, p.URL); err != nil {
-					fmt.Printf("Warning: zellij plugin download failed, skipping: %v\n", err)
+					log.Warnf("zellij plugin download failed, skipping: %v", err)
 					continue
 				}
 			}
@@ -228,7 +228,7 @@ func copyPlugins(pluginsDir string, plugins []ZellijPlugin) ([]string, error) {
 
 			in, err := os.Open(src)
 			if err != nil {
-				fmt.Printf("Warning: zellij plugin not found, skipping: %s (%v)\n", src, err)
+				log.Warnf("zellij plugin not found, skipping: %s (%v)", src, err)
 				continue
 			}
 			out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
@@ -244,7 +244,7 @@ func copyPlugins(pluginsDir string, plugins []ZellijPlugin) ([]string, error) {
 			}
 
 		default:
-			fmt.Printf("Warning: zellij plugin entry has neither path nor url, skipping\n")
+			log.Warn("zellij plugin entry has neither path nor url, skipping")
 			continue
 		}
 

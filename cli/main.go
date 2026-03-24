@@ -40,6 +40,8 @@ func (i *arrayFlags) Set(value string) error {
 }
 
 func main() {
+	initLogger()
+
 	// Pre-scan os.Args for --config which takes an optional argument:
 	//   agentjail --config             → print clean config and exit
 	//   agentjail --config /path/file  → load config from that path
@@ -71,10 +73,15 @@ func main() {
 	// Subcommands (checked after --config pre-scan so os.Args is already clean).
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
-		case "config-update":
+		case "update-config":
 			if err := runConfigUpdate(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
+				log.Fatalf("%v", err)
+			}
+			return
+		case "config-update":
+			log.Warn("'config-update' is deprecated, use 'update-config' instead")
+			if err := runConfigUpdate(); err != nil {
+				log.Fatalf("%v", err)
 			}
 			return
 		}
@@ -86,19 +93,18 @@ func main() {
 	if configFlagArg != nil && *configFlagArg != "" {
 		globalConfig, err = loadGlobalConfigFromPath(*configFlagArg)
 		if err != nil {
-			fmt.Printf("Error loading config: %v\n", err)
-			os.Exit(1)
+			log.Fatalf("loading config: %v", err)
 		}
 	} else {
 		globalConfig, err = loadGlobalConfig()
 	}
 	if err != nil {
-		fmt.Printf("Warning: Could not load global config: %v. Using defaults.\n", err)
+		log.Warnf("could not load global config: %v; using defaults", err)
 		globalConfig = &GlobalConfig{
 			DefaultEditor:        "micro",
 			DefaultShell:         "zsh",
 			MountSystemGitconfig: true,
-			MountGhConfig:        true,
+			MountGhConfigDir:        true,
 			AgentFrameworks: AgentFrameworksConfig{
 				Copilot: FrameworkConfig{Enabled: true},
 			},
@@ -126,6 +132,7 @@ func main() {
 	buildNoCachePtr := flag.Bool("build-no-cache", false, "Build/rebuild the agentjail image without cache")
 	privilegedPtr := flag.Bool("P", false, "Run container in privileged mode with Docker daemon exposed")
 	autoStartPtr := flag.Bool("A", false, "Automatically start the preferred agent when the container starts")
+	verbosePtr := flag.Bool("verbose", false, "Enable verbose/debug logging")
 
 	var volumeFlags arrayFlags
 	flag.Var(&volumeFlags, "v", "Additional volume mounts (e.g. /host:/container)")
@@ -135,23 +142,25 @@ func main() {
 
 	flag.Parse()
 
+	if *verbosePtr {
+		enableVerboseLogging()
+	}
+
 	// Check if no arguments were provided (except flags)
 	if len(os.Args) == 1 {
 		// Auto-exec: try to find existing container for current directory
 		cwd, err := os.Getwd()
 		if err != nil {
-			fmt.Printf("Error getting current working directory: %v\n", err)
-			os.Exit(1)
+			log.Fatalf("getting working directory: %v", err)
 		}
 
 		containerName, err := getContainerForDirectory(cwd)
 		if err != nil {
-			fmt.Printf("Error checking for existing containers: %v\n", err)
-			os.Exit(1)
+			log.Fatalf("checking for existing containers: %v", err)
 		}
 
 		if containerName != "" {
-			fmt.Printf("Found existing container '%s' for current directory. Executing into it...\n", containerName)
+			log.Infof("found existing container %q for current directory, re-attaching", containerName)
 
 			// Exec into the existing container
 			execArgs := []string{"exec", "-it", containerName, "/bin/bash"}
@@ -162,25 +171,22 @@ func main() {
 
 			err = runWithTerminalRestore(execCmd)
 			if err != nil {
-				fmt.Printf("Error executing into container: %v\n", err)
-				os.Exit(1)
+				log.Fatalf("executing into container: %v", err)
 			}
 			return
 		}
 
-		fmt.Println("No existing container found for current directory. Continuing with normal startup...")
+		log.Debug("no existing container found for current directory")
 	}
 
 	cwd, err := os.Getwd()
 	if err != nil {
-		fmt.Printf("Error getting current working directory: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("getting working directory: %v", err)
 	}
 
 	absDir, err := filepath.Abs(*dirPtr)
 	if err != nil {
-		fmt.Printf("Error resolving directory path: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("resolving directory path: %v", err)
 	}
 
 	// 1. Ensure ./opencode.json exists only when opencode agent is enabled
@@ -189,7 +195,7 @@ func main() {
 		if _, err := os.Stat(defaultConfigPath); os.IsNotExist(err) {
 			// Try to ensure it exists from template
 			if err := ensureFileFromTemplate(defaultConfigPath, "configs/opencode/opencode.json"); err != nil {
-				fmt.Printf("Warning: Could not ensure default opencode.json: %v\n", err)
+				log.Warnf("could not ensure default opencode.json: %v", err)
 			}
 		}
 	}
@@ -197,14 +203,12 @@ func main() {
 	// 2. Resolve Config File to use
 	absConfig, err := filepath.Abs(*configPtr)
 	if err != nil {
-		fmt.Printf("Error resolving config path: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("resolving config path: %v", err)
 	}
 
 	if _, err := os.Stat(absConfig); os.IsNotExist(err) {
 		if *configPtr != "opencode.json" {
-			fmt.Printf("Error: Configuration file not found at %s\n", absConfig)
-			os.Exit(1)
+			log.Fatalf("configuration file not found: %s", absConfig)
 		}
 		// If it's the default and not found, we just won't mount it to /project/opencode_config.json
 		absConfig = ""
@@ -216,9 +220,9 @@ func main() {
 
 	if needsBuild {
 		if *buildPtr || *buildNoCachePtr {
-			fmt.Println("Rebuilding 'agentjail' image...")
+			log.Info("rebuilding agentjail image")
 		} else {
-			fmt.Println("Docker image 'agentjail' not found. Preparing to build...")
+			log.Info("docker image 'agentjail' not found, building")
 		}
 
 		var dockerfilePath string
@@ -239,18 +243,17 @@ func main() {
 				dockerfilePath = localDfLower
 			} else {
 				// Create temp
-				fmt.Println("No local Dockerfile found. Using template.")
+				log.Info("no local Dockerfile found, using embedded template")
 				tmpPath, err := createTempDockerfile()
 				if err != nil {
-					fmt.Printf("Error creating temp Dockerfile: %v\n", err)
-					os.Exit(1)
+					log.Fatalf("creating temp Dockerfile: %v", err)
 				}
 				dockerfilePath = tmpPath
 				usingTemp = true
 			}
 		}
 
-		fmt.Printf("Building with Dockerfile: %s\n", dockerfilePath)
+		log.Infof("building with Dockerfile: %s", dockerfilePath)
 		buildArgs := []string{
 			"build", "-f", dockerfilePath, "-t", imageName,
 			"--build-arg", fmt.Sprintf("SHELL=%s", *shellPtr),
@@ -271,24 +274,21 @@ func main() {
 		buildCmd.Stderr = os.Stderr
 
 		if err := buildCmd.Run(); err != nil {
-			fmt.Printf("Error building Docker image: %v\n", err)
 			if usingTemp {
 				os.Remove(dockerfilePath)
 			}
-			os.Exit(1)
+			log.Fatalf("building Docker image: %v", err)
 		}
 
 		if usingTemp {
 			os.Remove(dockerfilePath)
 		}
 	} else {
-		// Image exists
-		// We don't check Dockerfile args here because we aren't building
-		fmt.Println("Docker image 'agentjail' found.")
+		log.Debug("docker image 'agentjail' found")
 	}
 
 	// 4. Run Container
-	fmt.Println("\nStarting container...")
+	log.Info("starting container")
 
 	// Generate container name: "agentjail." + first 5 chars of project directory name
 	dirName := filepath.Base(absDir)
@@ -301,18 +301,17 @@ func main() {
 	// Create .agentjail folder and update gitignore
 	agentJailDir, err := createAgentJailFolder(absDir)
 	if err != nil {
-		fmt.Printf("Error creating .agentjail folder: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("creating .agentjail folder: %v", err)
 	}
 
 	if err := updateGitignore(absDir); err != nil {
-		fmt.Printf("Warning: Could not update .gitignore: %v\n", err)
+		log.Warnf("could not update .gitignore: %v", err)
 	}
 
 	// Check for version updates
 	currentVersion := "1.0.0" // This should be updated with actual version
 	if err := checkVersionUpdate(agentJailDir, currentVersion); err != nil {
-		fmt.Printf("Warning: Version check failed: %v\n", err)
+		log.Warnf("version check failed: %v", err)
 	}
 
 	// Prepare environment variables for metadata
@@ -324,7 +323,7 @@ func main() {
 
 	// Copy template configs to .agentjail
 	if err := copyTemplateConfigs(agentJailDir, globalConfig); err != nil {
-		fmt.Printf("Warning: Could not copy template configs: %v\n", err)
+		log.Warnf("could not copy template configs: %v", err)
 	}
 
 	// Resolve the preferred agent and write zellij files (only when zellij is enabled).
@@ -340,7 +339,7 @@ func main() {
 			zellijAgentCmd = agentCommand(zellijAgentName)
 		}
 		if err := writeZellijFiles(agentJailDir, globalConfig.ZellijThemeOrDefault(), zellijAgentName, zellijAgentCmd, globalConfig.FileBrowserCmd(), *shellPtr, globalConfig.ZellijPlugins); err != nil {
-			fmt.Printf("Warning: Could not write zellij layout: %v\n", err)
+			log.Warnf("could not write zellij layout: %v", err)
 		}
 	}
 
@@ -417,13 +416,13 @@ func main() {
 		}
 
 		// Mount gh CLI config (primary auth store used by gh copilot)
-		if globalConfig.MountGhConfig {
+		if globalConfig.MountGhConfigDir {
 			hostGhPath := filepath.Join(usr.HomeDir, ".config", "gh")
 			if _, err := os.Stat(hostGhPath); err == nil {
 				ghMount := fmt.Sprintf("%s:/root/.config/gh", hostGhPath)
 				runArgs = append(runArgs, "-v", ghMount)
 				volumes = append(volumes, ghMount)
-				fmt.Println("Mounting host gh CLI config for Copilot auth.")
+				log.Info("mounting host gh CLI config for Copilot auth")
 			}
 		}
 
@@ -448,7 +447,7 @@ func main() {
 		}
 		if token != "" {
 			runArgs = append(runArgs, "-e", fmt.Sprintf("GH_TOKEN=%s", token))
-			fmt.Println("Passing GH_TOKEN to container for Copilot auth.")
+			log.Info("passing GH_TOKEN to container for Copilot auth")
 		}
 	}
 
@@ -456,14 +455,14 @@ func main() {
 	if globalConfig.AgentFrameworks.ClaudeCode.Enabled {
 		usr, err := user.Current()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Warning: could not determine current user; skipping Claude Code host mounts:", err)
+			log.Warnf("could not determine current user, skipping Claude Code host mounts: %v", err)
 		} else {
 			hostClaudePath := filepath.Join(usr.HomeDir, ".claude")
 			if _, err := os.Stat(hostClaudePath); err == nil {
 				claudeMount := fmt.Sprintf("%s:/root/.claude", hostClaudePath)
 				runArgs = append(runArgs, "-v", claudeMount)
 				volumes = append(volumes, claudeMount)
-				fmt.Println("Mounting host ~/.claude for Claude Code auth.")
+				log.Info("mounting host ~/.claude for Claude Code auth")
 			}
 			hostClaudeJSON := filepath.Join(usr.HomeDir, ".claude.json")
 			if _, err := os.Stat(hostClaudeJSON); err == nil {
@@ -485,7 +484,7 @@ func main() {
 				// Set in the process env and let Docker inherit it via a valueless -e flag.
 				os.Setenv("ANTHROPIC_API_KEY", apiKey)
 				runArgs = append(runArgs, "-e", "ANTHROPIC_API_KEY")
-				fmt.Println("Passing ANTHROPIC_API_KEY to container for Claude Code.")
+				log.Info("passing ANTHROPIC_API_KEY to container for Claude Code")
 			}
 		}
 	}
@@ -516,13 +515,11 @@ func main() {
 	if *editorConfigPtr != "" {
 		absEditorConfig, err := filepath.Abs(*editorConfigPtr)
 		if err != nil {
-			fmt.Printf("Error resolving editor config path: %v\n", err)
-			os.Exit(1)
+			log.Fatalf("resolving editor config path: %v", err)
 		}
 
 		if _, err := os.Stat(absEditorConfig); os.IsNotExist(err) {
-			fmt.Printf("Error: Editor config not found at %s\n", absEditorConfig)
-			os.Exit(1)
+			log.Fatalf("editor config not found: %s", absEditorConfig)
 		}
 
 		baseName := filepath.Base(absEditorConfig)
@@ -530,7 +527,7 @@ func main() {
 		mountArg := fmt.Sprintf("%s:/root/%s", absEditorConfig, baseName)
 		runArgs = append(runArgs, "-v", mountArg)
 		volumes = append(volumes, mountArg)
-		fmt.Printf("Mounting editor config: %s -> /root/%s\n", absEditorConfig, baseName)
+		log.Infof("mounting editor config %s → /root/%s", absEditorConfig, baseName)
 	}
 
 	// Handle -v (Additional Volumes)
@@ -548,7 +545,7 @@ func main() {
 		pTrimmed := strings.TrimSpace(p)
 		if pTrimmed == "" {
 			// Skip empty/whitespace-only port mappings to avoid emitting `-p ""`.
-			fmt.Println("Warning: skipping empty port mapping entry")
+			log.Warn("skipping empty port mapping entry")
 			continue
 		}
 		runArgs = append(runArgs, "-p", pTrimmed)
@@ -562,7 +559,7 @@ func main() {
 			resolvedVal = os.Getenv(hostVarName)
 			if resolvedVal == "" {
 				// Host variable is not set; skip to avoid clobbering file-based auth fallbacks
-				fmt.Printf("Warning: host environment variable %q is not set; skipping %q\n", hostVarName, key)
+				log.Warnf("host environment variable %q is not set, skipping container var %q", hostVarName, key)
 				continue
 			}
 		}
@@ -593,14 +590,14 @@ func main() {
 				// No token found in the fallback chain; attempt to obtain one from the gh CLI.
 				out, err := exec.Command("gh", "auth", "token").Output()
 				if err != nil {
-					fmt.Printf("Warning: failed to obtain GitHub auth token from gh CLI; GITHUB_TOKEN will not be injected: %v\n", err)
+					log.Warnf("failed to obtain GitHub auth token from gh CLI, GITHUB_TOKEN will not be injected: %v", err)
 				} else {
 					if token := strings.TrimSpace(string(out)); token != "" {
 						injectedGitHubToken = token
 						runArgs = append(runArgs, "-e", "GITHUB_TOKEN")
-						fmt.Println("Injecting GITHUB_TOKEN from gh CLI auth token.")
+						log.Info("injecting GITHUB_TOKEN from gh CLI auth token")
 					} else {
-						fmt.Println("Warning: gh auth token returned empty output; GITHUB_TOKEN will not be injected.")
+						log.Warn("gh auth token returned empty output, GITHUB_TOKEN will not be injected")
 					}
 				}
 			}
@@ -620,14 +617,14 @@ func main() {
 	}
 
 	if err := saveMetadata(agentJailDir, metadata); err != nil {
-		fmt.Printf("Warning: Could not save metadata: %v\n", err)
+		log.Warnf("could not save metadata: %v", err)
 	}
 
 	runArgs = append(runArgs, imageName)
 
 	if globalConfig.ZellijEnabled() {
 		if *autoStartPtr {
-			fmt.Println("Note: -A is no longer needed. The preferred agent launches automatically in the first zellij tab.")
+			log.Info("-A flag is no longer needed; the preferred agent launches automatically in the first zellij tab")
 		}
 		// Launch zellij with the 3-tab layout. mise trust/install runs first so all
 		// tabs see the project's tools from the start.
@@ -646,7 +643,7 @@ func main() {
 				cmd := agentCommand(agent)
 				initCmd := fmt.Sprintf("mise trust --yes /project && mise install; %s; exec %s", cmd, shell)
 				runArgs = append(runArgs, shell, "-i", "-c", initCmd)
-				fmt.Printf("Auto-starting agent: %s\n", agent)
+				log.Infof("auto-starting agent: %s", agent)
 			} else {
 				initCmd := fmt.Sprintf("mise trust --yes /project && mise install; exec %s", shell)
 				runArgs = append(runArgs, shell, "-i", "-c", initCmd)
@@ -655,7 +652,7 @@ func main() {
 		// No -A and no zellij: rely on the Dockerfile CMD (mise trust/install + shell).
 	}
 
-	fmt.Printf("Exec: docker %v\n", runArgs)
+	log.Debugf("exec: docker %v", runArgs)
 
 	runCmd := exec.Command("docker", runArgs...)
 	// Ensure the injected GitHub token, if any, is available to docker via its environment.
@@ -668,10 +665,9 @@ func main() {
 
 	err = runWithTerminalRestore(runCmd)
 	if err != nil {
-		fmt.Printf("\nError running Docker container: %v\n", err)
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			fmt.Printf("Container exited with code: %d\n", exitErr.ExitCode())
+			log.Fatalf("container exited with code %d", exitErr.ExitCode())
 		}
-		os.Exit(1)
+		log.Fatalf("running Docker container: %v", err)
 	}
 }
