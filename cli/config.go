@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/user"
@@ -161,7 +162,7 @@ func loadGlobalConfigFromPath(path string) (*GlobalConfig, error) {
 
 // runConfigUpdate reads the existing config file, detects any missing top-level
 // (and agent_frameworks sub-) keys, fills them in with their default values, and
-// writes the file back. It prints a summary of what was added.
+// writes the file back. It preserves existing comments and formatting.
 func runConfigUpdate() error {
 	configPath, err := getGlobalConfigPath()
 	if err != nil {
@@ -195,103 +196,114 @@ func runConfigUpdate() error {
 		return fmt.Errorf("failed to read config: %w", err)
 	}
 
-	// Parse as generic map to detect which keys are actually present in the file.
-	var rawMap map[string]interface{}
-	if err := yaml.Unmarshal(data, &rawMap); err != nil {
+	// Parse into a yaml.Node tree so comments are preserved on round-trip.
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return fmt.Errorf("failed to parse config: %w", err)
-	}
-	if rawMap == nil {
-		rawMap = make(map[string]interface{})
 	}
 
-	// Parse into the typed struct for modification.
-	var config GlobalConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return fmt.Errorf("failed to parse config: %w", err)
+	// Handle empty file.
+	if doc.Kind == 0 || len(doc.Content) == 0 {
+		doc = yaml.Node{
+			Kind: yaml.DocumentNode,
+			Content: []*yaml.Node{
+				{Kind: yaml.MappingNode, Tag: "!!map"},
+			},
+		}
+	}
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return fmt.Errorf("expected YAML mapping at document root")
+	}
+
+	// Index existing top-level keys (mapping nodes are key, value, key, value, …).
+	topKeys := make(map[string]int, len(root.Content)/2)
+	for i := 0; i < len(root.Content)-1; i += 2 {
+		topKeys[root.Content[i].Value] = i
 	}
 
 	var added []string
 
-	if _, ok := rawMap["default_editor"]; !ok {
-		config.DefaultEditor = "micro"
-		added = append(added, "default_editor: micro")
+	scalar := func(tag, value string) *yaml.Node {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: tag, Value: value}
 	}
-	if _, ok := rawMap["default_shell"]; !ok {
-		config.DefaultShell = "zsh"
-		added = append(added, "default_shell: zsh")
-	}
-	if _, ok := rawMap["mount_system_gitconfig"]; !ok {
-		config.MountSystemGitconfig = true
-		added = append(added, "mount_system_gitconfig: true")
-	}
-	if _, ok := rawMap["mount_gh_config"]; !ok {
-		config.MountGhConfig = true
-		added = append(added, "mount_gh_config: true")
-	}
-	if _, ok := rawMap["use_zellij"]; !ok {
-		trueVal := true
-		config.UseZellij = &trueVal
-		added = append(added, "use_zellij: true")
-	}
-	if _, ok := rawMap["zellij_theme"]; !ok {
-		config.ZellijTheme = "tokyo-night-storm"
-		added = append(added, "zellij_theme: tokyo-night-storm")
-	}
-	if _, ok := rawMap["file_browser"]; !ok {
-		config.FileBrowser = "rovr"
-		added = append(added, "file_browser: rovr")
-	}
-	if _, ok := rawMap["zellij_plugins"]; !ok {
-		config.ZellijPlugins = []ZellijPlugin{}
-		added = append(added, "zellij_plugins: []")
-	}
-	if _, ok := rawMap["inject_gh_auth_token"]; !ok {
-		config.InjectGhAuthToken = false
-		added = append(added, "inject_gh_auth_token: false")
-	}
-	if _, ok := rawMap["preferred_agent"]; !ok {
-		config.PreferredAgent = ""
-		added = append(added, "preferred_agent: \"\"")
-	}
-	if _, ok := rawMap["github_token"]; !ok {
-		config.GithubToken = ""
-		added = append(added, "github_token: \"\"")
-	}
-	if _, ok := rawMap["anthropic_api_key"]; !ok {
-		config.AnthropicApiKey = ""
-		added = append(added, "anthropic_api_key: \"\"")
-	}
-	if _, ok := rawMap["container_env_vars"]; !ok {
-		if config.ContainerEnvVars == nil {
-			config.ContainerEnvVars = map[string]string{}
-		}
-		added = append(added, "container_env_vars: {}")
-	}
-	if _, ok := rawMap["port_mappings"]; !ok {
-		if config.PortMappings == nil {
-			config.PortMappings = []string{}
-		}
-		added = append(added, "port_mappings: []")
+	addKV := func(key string, val *yaml.Node, desc string) {
+		root.Content = append(root.Content, scalar("!!str", key), val)
+		added = append(added, desc)
 	}
 
-	// agent_frameworks: check top-level key and each sub-framework.
-	if agentRaw, ok := rawMap["agent_frameworks"]; !ok {
-		config.AgentFrameworks = AgentFrameworksConfig{
-			Copilot: FrameworkConfig{Enabled: true},
+	if _, ok := topKeys["default_editor"]; !ok {
+		addKV("default_editor", scalar("!!str", "micro"), "default_editor: micro")
+	}
+	if _, ok := topKeys["default_shell"]; !ok {
+		addKV("default_shell", scalar("!!str", "zsh"), "default_shell: zsh")
+	}
+	if _, ok := topKeys["mount_system_gitconfig"]; !ok {
+		addKV("mount_system_gitconfig", scalar("!!bool", "true"), "mount_system_gitconfig: true")
+	}
+	if _, ok := topKeys["mount_gh_config"]; !ok {
+		addKV("mount_gh_config", scalar("!!bool", "true"), "mount_gh_config: true")
+	}
+	if _, ok := topKeys["use_zellij"]; !ok {
+		addKV("use_zellij", scalar("!!bool", "true"), "use_zellij: true")
+	}
+	if _, ok := topKeys["zellij_theme"]; !ok {
+		addKV("zellij_theme", scalar("!!str", "tokyo-night-storm"), "zellij_theme: tokyo-night-storm")
+	}
+	if _, ok := topKeys["file_browser"]; !ok {
+		addKV("file_browser", scalar("!!str", "rovr"), "file_browser: rovr")
+	}
+	if _, ok := topKeys["zellij_plugins"]; !ok {
+		addKV("zellij_plugins", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}, "zellij_plugins: []")
+	}
+	if _, ok := topKeys["inject_gh_auth_token"]; !ok {
+		addKV("inject_gh_auth_token", scalar("!!bool", "false"), "inject_gh_auth_token: false")
+	}
+	if _, ok := topKeys["preferred_agent"]; !ok {
+		addKV("preferred_agent", scalar("!!str", ""), "preferred_agent: \"\"")
+	}
+	if _, ok := topKeys["github_token"]; !ok {
+		addKV("github_token", scalar("!!str", ""), "github_token: \"\"")
+	}
+	if _, ok := topKeys["anthropic_api_key"]; !ok {
+		addKV("anthropic_api_key", scalar("!!str", ""), "anthropic_api_key: \"\"")
+	}
+	if _, ok := topKeys["container_env_vars"]; !ok {
+		addKV("container_env_vars", &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}, "container_env_vars: {}")
+	}
+	if _, ok := topKeys["port_mappings"]; !ok {
+		addKV("port_mappings", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}, "port_mappings: []")
+	}
+
+	// agent_frameworks: add the whole block if missing, or fill in missing sub-frameworks.
+	if afIdx, ok := topKeys["agent_frameworks"]; !ok {
+		afNode := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		for _, fw := range []struct {
+			name    string
+			enabled bool
+		}{{"opencode", false}, {"copilot", true}, {"claude", false}} {
+			afNode.Content = append(afNode.Content, frameworkNodes(fw.name, fw.enabled)...)
+			added = append(added, fmt.Sprintf("agent_frameworks.%s.enabled: %v", fw.name, fw.enabled))
 		}
-		added = append(added, "agent_frameworks.opencode.enabled: false")
-		added = append(added, "agent_frameworks.copilot.enabled: true")
-		added = append(added, "agent_frameworks.claude.enabled: false")
-	} else if agentMap, ok := agentRaw.(map[string]interface{}); ok {
-		if _, ok := agentMap["opencode"]; !ok {
-			added = append(added, "agent_frameworks.opencode.enabled: false")
-		}
-		if _, ok := agentMap["copilot"]; !ok {
-			config.AgentFrameworks.Copilot = FrameworkConfig{Enabled: true}
-			added = append(added, "agent_frameworks.copilot.enabled: true")
-		}
-		if _, ok := agentMap["claude"]; !ok {
-			added = append(added, "agent_frameworks.claude.enabled: false")
+		addKV("agent_frameworks", afNode, "") // desc already appended per-framework above
+		// Remove the blank desc that addKV appended.
+		added = added[:len(added)-1]
+	} else {
+		afVal := root.Content[afIdx+1]
+		if afVal.Kind == yaml.MappingNode {
+			afKeys := make(map[string]bool, len(afVal.Content)/2)
+			for i := 0; i < len(afVal.Content)-1; i += 2 {
+				afKeys[afVal.Content[i].Value] = true
+			}
+			for _, fw := range []struct {
+				name    string
+				enabled bool
+			}{{"opencode", false}, {"copilot", true}, {"claude", false}} {
+				if !afKeys[fw.name] {
+					afVal.Content = append(afVal.Content, frameworkNodes(fw.name, fw.enabled)...)
+					added = append(added, fmt.Sprintf("agent_frameworks.%s.enabled: %v", fw.name, fw.enabled))
+				}
+			}
 		}
 	}
 
@@ -300,15 +312,40 @@ func runConfigUpdate() error {
 		return nil
 	}
 
-	if err := saveGlobalConfig(&config); err != nil {
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(root); err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+	enc.Close()
+
+	if err := os.WriteFile(configPath, buf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	fmt.Printf("Updated %s — added %d missing properties:\n", configPath, len(added))
+	fmt.Printf("Updated %s — added %d missing fields:\n", configPath, len(added))
 	for _, a := range added {
 		fmt.Printf("  + %s\n", a)
 	}
 	return nil
+}
+
+// frameworkNodes returns the key+value yaml.Node pair for an agent framework entry.
+func frameworkNodes(name string, enabled bool) []*yaml.Node {
+	enabledStr := "false"
+	if enabled {
+		enabledStr = "true"
+	}
+	return []*yaml.Node{
+		{Kind: yaml.ScalarNode, Tag: "!!str", Value: name},
+		{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "enabled"},
+			{Kind: yaml.ScalarNode, Tag: "!!bool", Value: enabledStr},
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "plugins"},
+			{Kind: yaml.SequenceNode, Tag: "!!seq"},
+		}},
+	}
 }
 
 // printCleanConfig prints a clean, commented config template to stdout.
