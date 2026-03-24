@@ -66,7 +66,7 @@ func checkVersionUpdate(agentJailDir string, currentVersion string) error {
 	}
 
 	if existingMetadata != nil && existingMetadata.AgentJailVersion != currentVersion {
-		fmt.Printf("AgentJail version updated from %s to %s\n", existingMetadata.AgentJailVersion, currentVersion)
+		log.Infof("AgentJail version updated from %s to %s", existingMetadata.AgentJailVersion, currentVersion)
 		existingMetadata.AgentJailVersion = currentVersion
 		existingMetadata.LastUsed = time.Now()
 

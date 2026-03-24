@@ -18,7 +18,7 @@ func ensureFileFromTemplate(targetPath string, templateName string) error {
 		if err := os.WriteFile(targetPath, content, 0644); err != nil {
 			return fmt.Errorf("failed to write %s: %w", targetPath, err)
 		}
-		fmt.Printf("Created %s from template.\n", targetPath)
+		log.Infof("created %s from template", targetPath)
 	}
 	return nil
 }
@@ -64,7 +64,7 @@ func updateGitignore(baseDir string) error {
 		return fmt.Errorf("failed to update .gitignore: %w", err)
 	}
 
-	fmt.Println("Added .agentjail/ to .gitignore")
+	log.Info("added .agentjail/ to .gitignore")
 	return nil
 }
 

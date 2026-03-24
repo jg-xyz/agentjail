@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -121,7 +122,7 @@ func loadGlobalConfig() (*GlobalConfig, error) {
 	if yaml.Unmarshal(data, &rawMap) == nil {
 		if af, ok := rawMap["agent_frameworks"].(map[string]interface{}); ok {
 			if _, hasOld := af["claude_code"]; hasOld {
-				fmt.Println("Warning: 'claude_code' in agent_frameworks has been renamed to 'claude'. Please update your config.")
+				log.Warn("'claude_code' in agent_frameworks has been renamed to 'claude'; please update your config")
 			}
 		}
 	}
@@ -160,17 +161,21 @@ func loadGlobalConfigFromPath(path string) (*GlobalConfig, error) {
 	return &config, nil
 }
 
-// runConfigUpdate reads the existing config file, detects any missing top-level
-// (and agent_frameworks sub-) keys, fills them in with their default values, and
-// writes the file back. It preserves existing comments and formatting.
+// runConfigUpdate resolves the global config path and delegates to runConfigUpdateFromPath.
 func runConfigUpdate() error {
 	configPath, err := getGlobalConfigPath()
 	if err != nil {
 		return err
 	}
+	return runConfigUpdateFromPath(configPath)
+}
 
+// runConfigUpdateFromPath detects any missing top-level (and agent_frameworks sub-)
+// keys in the config file at configPath, fills them in with their default values,
+// and writes the file back. It preserves existing comments and formatting.
+func runConfigUpdateFromPath(configPath string) error {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		fmt.Println("Config file does not exist. Creating with defaults...")
+		log.Info("config file does not exist, creating with defaults")
 		trueVal := true
 		config := &GlobalConfig{
 			DefaultEditor:        "micro",
@@ -184,10 +189,17 @@ func runConfigUpdate() error {
 				Copilot: FrameworkConfig{Enabled: true},
 			},
 		}
-		if err := saveGlobalConfig(config); err != nil {
+		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 			return err
 		}
-		fmt.Printf("Created %s\n", configPath)
+		data, err := yaml.Marshal(config)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(configPath, data, 0644); err != nil {
+			return err
+		}
+		log.Infof("created %s", configPath)
 		return nil
 	}
 
@@ -217,9 +229,9 @@ func runConfigUpdate() error {
 	}
 
 	// Index existing top-level keys (mapping nodes are key, value, key, value, …).
-	topKeys := make(map[string]int, len(root.Content)/2)
+	topKeys := make(map[string]bool, len(root.Content)/2)
 	for i := 0; i < len(root.Content)-1; i += 2 {
-		topKeys[root.Content[i].Value] = i
+		topKeys[root.Content[i].Value] = true
 	}
 
 	var added []string
@@ -232,73 +244,77 @@ func runConfigUpdate() error {
 		added = append(added, desc)
 	}
 
-	if _, ok := topKeys["default_editor"]; !ok {
+	if !topKeys["default_editor"] {
 		addKV("default_editor", scalar("!!str", "micro"), "default_editor: micro")
 	}
-	if _, ok := topKeys["default_shell"]; !ok {
+	if !topKeys["default_shell"] {
 		addKV("default_shell", scalar("!!str", "zsh"), "default_shell: zsh")
 	}
-	if _, ok := topKeys["mount_system_gitconfig"]; !ok {
+	if !topKeys["mount_system_gitconfig"] {
 		addKV("mount_system_gitconfig", scalar("!!bool", "true"), "mount_system_gitconfig: true")
 	}
-	if _, ok := topKeys["mount_gh_config"]; !ok {
+	if !topKeys["mount_gh_config"] {
 		addKV("mount_gh_config", scalar("!!bool", "true"), "mount_gh_config: true")
 	}
-	if _, ok := topKeys["use_zellij"]; !ok {
+	if !topKeys["use_zellij"] {
 		addKV("use_zellij", scalar("!!bool", "true"), "use_zellij: true")
 	}
-	if _, ok := topKeys["zellij_theme"]; !ok {
+	if !topKeys["zellij_theme"] {
 		addKV("zellij_theme", scalar("!!str", "tokyo-night-storm"), "zellij_theme: tokyo-night-storm")
 	}
-	if _, ok := topKeys["file_browser"]; !ok {
+	if !topKeys["file_browser"] {
 		addKV("file_browser", scalar("!!str", "rovr"), "file_browser: rovr")
 	}
-	if _, ok := topKeys["zellij_plugins"]; !ok {
+	if !topKeys["zellij_plugins"] {
 		addKV("zellij_plugins", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}, "zellij_plugins: []")
 	}
-	if _, ok := topKeys["inject_gh_auth_token"]; !ok {
+	if !topKeys["inject_gh_auth_token"] {
 		addKV("inject_gh_auth_token", scalar("!!bool", "false"), "inject_gh_auth_token: false")
 	}
-	if _, ok := topKeys["preferred_agent"]; !ok {
+	if !topKeys["preferred_agent"] {
 		addKV("preferred_agent", scalar("!!str", ""), "preferred_agent: \"\"")
 	}
-	if _, ok := topKeys["github_token"]; !ok {
+	if !topKeys["github_token"] {
 		addKV("github_token", scalar("!!str", ""), "github_token: \"\"")
 	}
-	if _, ok := topKeys["anthropic_api_key"]; !ok {
+	if !topKeys["anthropic_api_key"] {
 		addKV("anthropic_api_key", scalar("!!str", ""), "anthropic_api_key: \"\"")
 	}
-	if _, ok := topKeys["container_env_vars"]; !ok {
+	if !topKeys["container_env_vars"] {
 		addKV("container_env_vars", &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}, "container_env_vars: {}")
 	}
-	if _, ok := topKeys["port_mappings"]; !ok {
+	if !topKeys["port_mappings"] {
 		addKV("port_mappings", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}, "port_mappings: []")
 	}
 
 	// agent_frameworks: add the whole block if missing, or fill in missing sub-frameworks.
-	if afIdx, ok := topKeys["agent_frameworks"]; !ok {
+	frameworks := []struct {
+		name    string
+		enabled bool
+	}{{"opencode", false}, {"copilot", true}, {"claude", false}}
+
+	if !topKeys["agent_frameworks"] {
 		afNode := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-		for _, fw := range []struct {
-			name    string
-			enabled bool
-		}{{"opencode", false}, {"copilot", true}, {"claude", false}} {
+		for _, fw := range frameworks {
 			afNode.Content = append(afNode.Content, frameworkNodes(fw.name, fw.enabled)...)
 			added = append(added, fmt.Sprintf("agent_frameworks.%s.enabled: %v", fw.name, fw.enabled))
 		}
-		addKV("agent_frameworks", afNode, "") // desc already appended per-framework above
-		// Remove the blank desc that addKV appended.
-		added = added[:len(added)-1]
+		root.Content = append(root.Content, scalar("!!str", "agent_frameworks"), afNode)
 	} else {
-		afVal := root.Content[afIdx+1]
-		if afVal.Kind == yaml.MappingNode {
+		// Find the agent_frameworks value node.
+		var afVal *yaml.Node
+		for i := 0; i < len(root.Content)-1; i += 2 {
+			if root.Content[i].Value == "agent_frameworks" {
+				afVal = root.Content[i+1]
+				break
+			}
+		}
+		if afVal != nil && afVal.Kind == yaml.MappingNode {
 			afKeys := make(map[string]bool, len(afVal.Content)/2)
 			for i := 0; i < len(afVal.Content)-1; i += 2 {
 				afKeys[afVal.Content[i].Value] = true
 			}
-			for _, fw := range []struct {
-				name    string
-				enabled bool
-			}{{"opencode", false}, {"copilot", true}, {"claude", false}} {
+			for _, fw := range frameworks {
 				if !afKeys[fw.name] {
 					afVal.Content = append(afVal.Content, frameworkNodes(fw.name, fw.enabled)...)
 					added = append(added, fmt.Sprintf("agent_frameworks.%s.enabled: %v", fw.name, fw.enabled))
@@ -308,9 +324,16 @@ func runConfigUpdate() error {
 	}
 
 	if len(added) == 0 {
-		fmt.Printf("Config is already up to date (%s). No changes needed.\n", configPath)
+		log.Infof("config is already up to date (%s)", configPath)
 		return nil
 	}
+
+	// Back up the existing config before writing.
+	backupPath := fmt.Sprintf("%s.bkup.%d", configPath, time.Now().Unix())
+	if err := os.WriteFile(backupPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to create config backup: %w", err)
+	}
+	log.Infof("backed up config to %s", backupPath)
 
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
@@ -318,15 +341,17 @@ func runConfigUpdate() error {
 	if err := enc.Encode(root); err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
-	enc.Close()
+	if err := enc.Close(); err != nil {
+		return fmt.Errorf("failed to finalise config encoding: %w", err)
+	}
 
 	if err := os.WriteFile(configPath, buf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	fmt.Printf("Updated %s — added %d missing fields:\n", configPath, len(added))
+	log.Infof("updated %s — added %d missing fields:", configPath, len(added))
 	for _, a := range added {
-		fmt.Printf("  + %s\n", a)
+		log.Infof("  + %s", a)
 	}
 	return nil
 }

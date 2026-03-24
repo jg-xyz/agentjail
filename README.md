@@ -48,8 +48,15 @@ Run from inside a project directory. With no arguments, AgentJail detects an exi
 | `-D <path>` | — | Custom Dockerfile to use |
 | `--config` | — | Print a clean config template to stdout and exit |
 | `--config <path>` | — | Load config from a specific file instead of the default |
+| `--verbose` | — | Enable debug logging |
 
 ### Examples
+
+### Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `agentjail update-config` | Migrate an existing config file by adding any missing fields with their default values, preserving existing comments and formatting |
 
 ```sh
 # start a container for the current project
