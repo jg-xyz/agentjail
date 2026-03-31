@@ -30,6 +30,20 @@ type GlobalConfig struct {
 	PortMappings         []string              `yaml:"port_mappings"`
 }
 
+// applyEnvOverrides applies AGENTJAIL_* environment variable overrides to the
+// config, allowing per-invocation customisation without editing the config file.
+func (c *GlobalConfig) applyEnvOverrides() {
+	if v := os.Getenv("AGENTJAIL_SHELL"); v != "" {
+		c.DefaultShell = v
+	}
+	if v := os.Getenv("AGENTJAIL_EDITOR"); v != "" {
+		c.DefaultEditor = v
+	}
+	if v := os.Getenv("AGENTJAIL_FILEMANAGER"); v != "" {
+		c.FileBrowser = v
+	}
+}
+
 // ZellijEnabled reports whether zellij should be used as the multiplexer.
 // Defaults to true when use_zellij is absent from the config file.
 func (c *GlobalConfig) ZellijEnabled() bool {
@@ -104,6 +118,7 @@ func loadGlobalConfig() (*GlobalConfig, error) {
 		if err := saveGlobalConfig(config); err != nil {
 			return nil, err
 		}
+		config.applyEnvOverrides()
 		return config, nil
 	}
 
@@ -127,6 +142,7 @@ func loadGlobalConfig() (*GlobalConfig, error) {
 		}
 	}
 
+	config.applyEnvOverrides()
 	return &config, nil
 }
 
@@ -386,7 +402,9 @@ func printCleanConfig() {
 	fmt.Print(`# AgentJail configuration file
 # Default location: ~/.config/agentjail/config.yaml
 
-# Default editor to use inside the container (e.g. micro, vim, nano)
+# Default editor to use inside the container.
+# Built-in (always available): micro, vim, nano
+# Optional (installed on demand): nvim (neovim), hx (helix), fresh
 default_editor: micro
 
 # Default shell to use inside the container (bash or zsh)
@@ -423,7 +441,8 @@ use_zellij: true
 zellij_theme: tokyo-night-storm
 
 # Command used for the file browser tab when use_zellij is true.
-# Defaults to "rovr". Set to "yazi" or any other terminal file manager to swap it out.
+# Built-in options: rovr (default), yazi, nnn, spf (superfile).
+# Changing from the default requires a rebuild: agentjail -b
 file_browser: rovr
 
 # Zellij plugins to load when use_zellij is true.

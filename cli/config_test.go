@@ -303,6 +303,138 @@ func TestFileBrowserCmd(t *testing.T) {
 	}
 }
 
+func TestLoadGlobalConfigFromPath_OptionalEditors(t *testing.T) {
+	cases := []struct {
+		editor string
+	}{
+		{"nvim"},
+		{"hx"},
+		{"fresh"},
+	}
+	for _, c := range cases {
+		t.Run(c.editor, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "config.yaml")
+			content := "default_editor: " + c.editor + "\ndefault_shell: zsh\n"
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := loadGlobalConfigFromPath(path)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.DefaultEditor != c.editor {
+				t.Errorf("DefaultEditor: got %q, want %q", cfg.DefaultEditor, c.editor)
+			}
+		})
+	}
+}
+
+func TestPrintCleanConfig_DocumentsOptionalEditors(t *testing.T) {
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	printCleanConfig()
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+	output := buf.String()
+
+	for _, editor := range []string{"nvim", "hx", "fresh"} {
+		if !bytes.Contains([]byte(output), []byte(editor)) {
+			t.Errorf("printCleanConfig output does not mention optional editor %q", editor)
+		}
+	}
+}
+
+func TestApplyEnvOverrides(t *testing.T) {
+	cases := []struct {
+		name        string
+		envShell    string
+		envEditor   string
+		envFileMgr  string
+		wantShell   string
+		wantEditor  string
+		wantBrowser string
+	}{
+		{
+			name:        "no env vars — config values unchanged",
+			wantShell:   "zsh",
+			wantEditor:  "micro",
+			wantBrowser: "rovr",
+		},
+		{
+			name:        "AGENTJAIL_SHELL overrides shell",
+			envShell:    "bash",
+			wantShell:   "bash",
+			wantEditor:  "micro",
+			wantBrowser: "rovr",
+		},
+		{
+			name:        "AGENTJAIL_EDITOR overrides editor",
+			envEditor:   "nvim",
+			wantShell:   "zsh",
+			wantEditor:  "nvim",
+			wantBrowser: "rovr",
+		},
+		{
+			name:        "AGENTJAIL_FILEMANAGER overrides file browser",
+			envFileMgr:  "yazi",
+			wantShell:   "zsh",
+			wantEditor:  "micro",
+			wantBrowser: "yazi",
+		},
+		{
+			name:        "all three env vars set",
+			envShell:    "bash",
+			envEditor:   "hx",
+			envFileMgr:  "ranger",
+			wantShell:   "bash",
+			wantEditor:  "hx",
+			wantBrowser: "ranger",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			setOrUnset := func(key, val string) {
+				if val != "" {
+					t.Setenv(key, val)
+				} else {
+					t.Setenv(key, "")
+					os.Unsetenv(key)
+				}
+			}
+			setOrUnset("AGENTJAIL_SHELL", c.envShell)
+			setOrUnset("AGENTJAIL_EDITOR", c.envEditor)
+			setOrUnset("AGENTJAIL_FILEMANAGER", c.envFileMgr)
+
+			cfg := &GlobalConfig{
+				DefaultShell:  "zsh",
+				DefaultEditor: "micro",
+				FileBrowser:   "rovr",
+			}
+			cfg.applyEnvOverrides()
+
+			if cfg.DefaultShell != c.wantShell {
+				t.Errorf("DefaultShell: got %q, want %q", cfg.DefaultShell, c.wantShell)
+			}
+			if cfg.DefaultEditor != c.wantEditor {
+				t.Errorf("DefaultEditor: got %q, want %q", cfg.DefaultEditor, c.wantEditor)
+			}
+			if cfg.FileBrowser != c.wantBrowser {
+				t.Errorf("FileBrowser: got %q, want %q", cfg.FileBrowser, c.wantBrowser)
+			}
+		})
+	}
+}
+
 func TestLoadGlobalConfigFromPath_InjectGhAuthTokenDefault(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")

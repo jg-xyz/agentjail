@@ -1,0 +1,101 @@
+package main
+
+import (
+	"strings"
+	"testing"
+)
+
+// dockerfile reads the embedded Dockerfile template and returns it as a string.
+func dockerfile(t *testing.T) string {
+	t.Helper()
+	data, err := templatesFS.ReadFile("templates/Dockerfile")
+	if err != nil {
+		t.Fatalf("could not read embedded Dockerfile: %v", err)
+	}
+	return string(data)
+}
+
+func TestDockerfileTemplate_NeovimInstallBlock(t *testing.T) {
+	df := dockerfile(t)
+	checks := []string{
+		`"${EDITOR}" = "nvim"`,
+		`apt-get install -y neovim`,
+	}
+	for _, s := range checks {
+		if !strings.Contains(df, s) {
+			t.Errorf("Dockerfile missing neovim install block; expected to contain %q", s)
+		}
+	}
+}
+
+func TestDockerfileTemplate_HelixInstallBlock(t *testing.T) {
+	df := dockerfile(t)
+	checks := []string{
+		`"${EDITOR}" = "hx"`,
+		`helix-editor/helix`,
+		`/usr/local/bin/hx`,
+		`HELIX_RUNTIME`,
+		`/usr/local/lib/helix/runtime`,
+	}
+	for _, s := range checks {
+		if !strings.Contains(df, s) {
+			t.Errorf("Dockerfile missing helix install block; expected to contain %q", s)
+		}
+	}
+}
+
+func TestDockerfileTemplate_FreshInstallBlock(t *testing.T) {
+	df := dockerfile(t)
+	checks := []string{
+		`"${EDITOR}" = "fresh"`,
+		`@fresh-editor/fresh-editor`,
+		`/usr/local/bin/fresh`,
+	}
+	for _, s := range checks {
+		if !strings.Contains(df, s) {
+			t.Errorf("Dockerfile missing fresh install block; expected to contain %q", s)
+		}
+	}
+}
+
+func TestDockerfileTemplate_HelixRuntimeExportedInBothShells(t *testing.T) {
+	df := dockerfile(t)
+	// HELIX_RUNTIME must be exported in both .zshrc and .bashrc so it's
+	// available regardless of the configured shell.
+	if strings.Count(df, "HELIX_RUNTIME=/usr/local/lib/helix/runtime") < 2 {
+		t.Error("HELIX_RUNTIME export should appear for both zshrc and bashrc")
+	}
+}
+
+func TestDockerfileTemplate_EditorMOTDShowsNeovim(t *testing.T) {
+	df := dockerfile(t)
+	if !strings.Contains(df, `"${EDITOR}" = "nvim" ] && AVAILABLE_EDITORS`) {
+		t.Error("MOTD block does not conditionally append neovim to AVAILABLE_EDITORS")
+	}
+}
+
+func TestDockerfileTemplate_EditorMOTDShowsHelix(t *testing.T) {
+	df := dockerfile(t)
+	if !strings.Contains(df, `"${EDITOR}" = "hx" ] && AVAILABLE_EDITORS`) {
+		t.Error("MOTD block does not conditionally append helix to AVAILABLE_EDITORS")
+	}
+}
+
+func TestDockerfileTemplate_EditorMOTDShowsFresh(t *testing.T) {
+	df := dockerfile(t)
+	if !strings.Contains(df, `"${EDITOR}" = "fresh" ] && AVAILABLE_EDITORS`) {
+		t.Error("MOTD block does not conditionally append fresh to AVAILABLE_EDITORS")
+	}
+}
+
+func TestDockerfileTemplate_EditorInstallsAreConditional(t *testing.T) {
+	// Each editor install block must have a matching "Not installing" fallback
+	// so the build doesn't fail when a different editor is selected.
+	df := dockerfile(t)
+	for _, editor := range []string{"neovim", "helix", "fresh"} {
+		needle := "Not installing " + editor
+		if !strings.Contains(df, needle) {
+			t.Errorf("Dockerfile missing fallback %q for conditional %s install", needle, editor)
+		}
+	}
+}

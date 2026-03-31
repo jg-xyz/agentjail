@@ -137,7 +137,7 @@ use_zellij: true
 zellij_theme: tokyo-night-storm
 
 # Command launched in the files tab.
-# Values: rovr | <any terminal file manager in the image>
+# Built-in: rovr (default), yazi, nnn, spf — changing requires a rebuild.
 file_browser: rovr
 
 # Zellij plugins to display in the bottom status bar (right side).
@@ -214,7 +214,7 @@ When `use_zellij: true` (the default), the container opens inside a [Zellij](htt
 |-----|----------|
 | agent | Preferred agent — auto-launches on first prompt |
 | terminal | Plain shell |
-| files | File browser (`rovr` by default) — auto-launches on first prompt |
+| files | File browser (`rovr` by default; also supports `yazi`, `nnn`, `spf`) — auto-launches on first prompt |
 
 Keybinds (start in locked mode — all other keys pass through to the active pane):
 
@@ -323,6 +323,6 @@ agentjail -P
 
 ### What's in the image
 
-Ubuntu 24.04 with: `gh`, `git`, `micro`, `vim`, `nano`, `zsh`, `bash`, `node` (via mise), `python3`, `uv`, `pip`, `aws-cli`, `ripgrep`, `fd`, `fzf`, `eza`, `yq`, `television`, `zellij`, `rovr`, `rich-cli`, starship prompt.
+Ubuntu 24.04 with: `gh`, `git`, `micro`, `vim`, `nano`, `zsh`, `bash`, `node` (via mise), `python3`, `uv`, `pip`, `aws-cli`, `ripgrep`, `fd`, `fzf`, `eza`, `yq`, `television`, `zellij`, `rovr`, `rich-cli`, starship prompt. Optional file browsers: `yazi`, `nnn`, `spf` (install via `file_browser` config + rebuild).
 
 Shell aliases: `files` → file browser, `edit` → configured editor, `/exit` → exit.
