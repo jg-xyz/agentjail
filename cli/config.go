@@ -39,7 +39,10 @@ func (c *GlobalConfig) applyEnvOverrides() {
 	if v := os.Getenv("AGENTJAIL_EDITOR"); v != "" {
 		c.DefaultEditor = v
 	}
-	if v := os.Getenv("AGENTJAIL_FILEMANAGER"); v != "" {
+	if v := os.Getenv("AGENTJAIL_FILE_BROWSER"); v != "" {
+		c.FileBrowser = v
+	} else if v := os.Getenv("AGENTJAIL_FILEMANAGER"); v != "" {
+		// Backwards-compatible alias for AGENTJAIL_FILE_BROWSER.
 		c.FileBrowser = v
 	}
 }
@@ -404,7 +407,8 @@ func printCleanConfig() {
 
 # Default editor to use inside the container.
 # Built-in (always available): micro, vim, nano
-# Optional (installed on demand): nvim (neovim), hx (helix), fresh
+# Optional (available only in images built with them): nvim (neovim), hx (helix), fresh
+# Switching to these requires a rebuild: agentjail -b
 default_editor: micro
 
 # Default shell to use inside the container (bash or zsh)

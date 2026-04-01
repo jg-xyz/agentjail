@@ -385,7 +385,7 @@ func TestApplyEnvOverrides(t *testing.T) {
 			wantBrowser: "rovr",
 		},
 		{
-			name:        "AGENTJAIL_FILEMANAGER overrides file browser",
+			name:        "AGENTJAIL_FILE_BROWSER overrides file browser",
 			envFileMgr:  "yazi",
 			wantShell:   "zsh",
 			wantEditor:  "micro",
@@ -413,7 +413,7 @@ func TestApplyEnvOverrides(t *testing.T) {
 			}
 			setOrUnset("AGENTJAIL_SHELL", c.envShell)
 			setOrUnset("AGENTJAIL_EDITOR", c.envEditor)
-			setOrUnset("AGENTJAIL_FILEMANAGER", c.envFileMgr)
+			setOrUnset("AGENTJAIL_FILE_BROWSER", c.envFileMgr)
 
 			cfg := &GlobalConfig{
 				DefaultShell:  "zsh",

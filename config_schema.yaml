@@ -122,8 +122,9 @@ use_zellij: true               # true | false
 # --------------------------------------------------------------
 # file_browser
 #   Command launched in the file browser tab when use_zellij is
-#   true. Built-in options are installed conditionally at image
-#   build time; changing this requires a rebuild (agentjail -b).
+#   true. Changing from the default triggers a one-time runtime
+#   download/install (cached in .agentjail/bin). Rebuild
+#   (agentjail -b) is optional if you want it baked into the image.
 #
 #   Values: rovr | yazi | nnn | spf | <any command>
 #   Default: rovr

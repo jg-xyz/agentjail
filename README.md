@@ -137,7 +137,10 @@ use_zellij: true
 zellij_theme: tokyo-night-storm
 
 # Command launched in the files tab.
-# Built-in: rovr (default), yazi, nnn, spf — changing requires a rebuild.
+# Built-in: rovr (default), yazi, nnn, spf.
+# Changing from the default triggers a one-time runtime download/install of the
+# browser (cached in .agentjail/bin for future runs). Rebuild (agentjail -b) is
+# optional if you want it baked into the image instead.
 file_browser: rovr
 
 # Zellij plugins to display in the bottom status bar (right side).

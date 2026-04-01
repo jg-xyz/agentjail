@@ -159,8 +159,8 @@ PROMPT_COMMAND="${PROMPT_COMMAND:+${PROMPT_COMMAND}$'\n'}history -a"
 HISTCONF
 
 # aliases
-RUN echo "alias files='${FILE_BROWSER}'" >> ~/.${SHELL}rc && \
-    echo "alias edit='${EDITOR}'" >> ~/.${SHELL}rc && \
+RUN echo "alias files='\$FILE_BROWSER'" >> ~/.${SHELL}rc && \
+    echo "alias edit='\$EDITOR'" >> ~/.${SHELL}rc && \
     echo "alias /exit=exit" >> ~/.${SHELL}rc && \
     echo "\n\n" >> ~/.${SHELL}rc
 
@@ -321,7 +321,9 @@ case "$browser" in
         rm -rf /tmp/yazi.zip /tmp/yazi-dl
         ;;
     nnn)
-        apt-get install -y -q nnn 2>/dev/null
+        apt-get update -y -q
+        apt-get install -y -q nnn
+        rm -rf /var/lib/apt/lists/*
         cp /usr/bin/nnn "$agentjail_bin/nnn"
         ;;
     spf)
@@ -346,4 +348,4 @@ WORKDIR /project
 RUN [ ! -f /project/mise.toml ] && touch /project/mise.toml
 
 # Default command
-CMD /usr/local/bin/agentjail-install-browser && mise trust --yes && mise install || rich "No mise file detected" --print --style 'dark_goldenrod' && ${SHELL} && cd /project
+CMD /usr/local/bin/agentjail-install-browser || true && mise trust --yes && mise install || rich "No mise file detected" --print --style 'dark_goldenrod' && ${SHELL} && cd /project
