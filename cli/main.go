@@ -258,6 +258,7 @@ func main() {
 			"build", "-f", dockerfilePath, "-t", imageName,
 			"--build-arg", fmt.Sprintf("SHELL=%s", *shellPtr),
 			"--build-arg", fmt.Sprintf("EDITOR=%s", *editorPtr),
+			"--build-arg", fmt.Sprintf("FILE_BROWSER=%s", globalConfig.FileBrowserCmd()),
 			"--build-arg", fmt.Sprintf("USE_OPENCODE=%t", globalConfig.AgentFrameworks.OpenCode.Enabled),
 			"--build-arg", fmt.Sprintf("USE_COPILOT=%t", globalConfig.AgentFrameworks.Copilot.Enabled),
 			"--build-arg", fmt.Sprintf("USE_CLAUDE_CODE=%t", globalConfig.AgentFrameworks.ClaudeCode.Enabled),
@@ -317,6 +318,7 @@ func main() {
 	// Prepare environment variables for metadata
 	envVars := map[string]string{
 		"EDITOR":       *editorPtr,
+		"VISUAL":       *editorPtr,
 		"SHELL":        *shellPtr,
 		"CONTAINER_ID": containerName,
 	}
@@ -365,6 +367,8 @@ func main() {
 	}
 	runArgs = append(runArgs,
 		"-e", fmt.Sprintf("EDITOR=%s", *editorPtr),
+		"-e", fmt.Sprintf("VISUAL=%s", *editorPtr),
+		"-e", fmt.Sprintf("FILE_BROWSER=%s", globalConfig.FileBrowserCmd()),
 		"-e", fmt.Sprintf("SHELL=%s", *shellPtr),
 		"-e", fmt.Sprintf("CONTAINER_ID=%s", containerName),
 		"-e", fmt.Sprintf("HISTFILE=/root/.agentjail/%s_history", *shellPtr),

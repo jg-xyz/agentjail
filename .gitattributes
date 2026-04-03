@@ -1,0 +1,3 @@
+# Force LF line endings for shell/config templates so they work correctly
+# inside Linux Docker containers, regardless of the host OS git settings.
+cli/templates/**   text eol=lf

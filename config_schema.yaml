@@ -122,12 +122,14 @@ use_zellij: true               # true | false
 # --------------------------------------------------------------
 # file_browser
 #   Command launched in the file browser tab when use_zellij is
-#   true. Can be any terminal file manager available in the image.
+#   true. Changing from the default triggers a one-time runtime
+#   download/install (cached in .agentjail/bin). Rebuild
+#   (agentjail -b) is optional if you want it baked into the image.
 #
-#   Values: rovr | yazi | any shell command
+#   Values: rovr | yazi | nnn | spf | <any command>
 #   Default: rovr
 # --------------------------------------------------------------
-file_browser: rovr             # rovr | yazi | <any command>
+file_browser: rovr             # rovr | yazi | nnn | spf | <any command>
 
 
 # --------------------------------------------------------------

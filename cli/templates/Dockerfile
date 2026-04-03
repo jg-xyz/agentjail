@@ -2,6 +2,7 @@ FROM ubuntu:24.04 as base
 
 ARG SHELL="bash"
 ARG EDITOR="micro"
+ARG FILE_BROWSER="rovr"
 ARG USE_COPILOT="false"
 ARG USE_OPENCODE="false"
 ARG USE_CLAUDE_CODE="false"
@@ -39,6 +40,8 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
     | tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 ENV SHELL=${SHELL}
+ENV FILE_BROWSER=${FILE_BROWSER}
+ENV PATH="/root/.agentjail/bin:${PATH}"
 
 # configure zsh
 RUN [ "${SHELL}" = "zsh" ] && chsh -s $(which zsh)
@@ -76,6 +79,69 @@ RUN mise use -g \
 RUN mkdir -p /root/.config/micro && \
     printf '{"CtrlT": "None"}\n' > /root/.config/micro/bindings.json
 
+# install neovim (when selected as editor)
+RUN if [ "${EDITOR}" = "nvim" ]; then \
+    apt-get update && apt-get install -y neovim && rm -rf /var/lib/apt/lists/*; \
+else \
+    echo "Not installing neovim"; \
+fi
+
+# install helix (when selected as editor)
+RUN if [ "${EDITOR}" = "hx" ]; then \
+    apt-get update && apt-get install -y xz-utils && rm -rf /var/lib/apt/lists/* && \
+    HELIX_RELEASE=$(curl -s https://api.github.com/repos/helix-editor/helix/releases/latest | jq -r '.tag_name') && \
+    curl -L "https://github.com/helix-editor/helix/releases/download/${HELIX_RELEASE}/helix-${HELIX_RELEASE}-x86_64-linux.tar.xz" \
+        -o helix.tar.xz && \
+    tar xf helix.tar.xz && \
+    mv "helix-${HELIX_RELEASE}-x86_64-linux/hx" /usr/local/bin/hx && \
+    mkdir -p /usr/local/lib/helix && \
+    mv "helix-${HELIX_RELEASE}-x86_64-linux/runtime" /usr/local/lib/helix/runtime && \
+    rm -rf helix.tar.xz "helix-${HELIX_RELEASE}-x86_64-linux" && \
+    printf '\nexport HELIX_RUNTIME=/usr/local/lib/helix/runtime\n' >> /root/.zshrc && \
+    printf '\nexport HELIX_RUNTIME=/usr/local/lib/helix/runtime\n' >> /root/.bashrc; \
+else \
+    echo "Not installing helix"; \
+fi
+
+# install fresh (when selected as editor)
+RUN if [ "${EDITOR}" = "fresh" ]; then \
+    mise x -- npm install -g @fresh-editor/fresh-editor && \
+    ln -sf "$(mise x -- npm prefix -g)/bin/fresh" /usr/local/bin/fresh; \
+else \
+    echo "Not installing fresh"; \
+fi
+
+# install yazi (when selected as file browser)
+RUN if [ "${FILE_BROWSER}" = "yazi" ]; then \
+    YAZI_VERSION=$(curl -s https://api.github.com/repos/sxyazi/yazi/releases/latest | jq -r '.tag_name') && \
+    curl -L "https://github.com/sxyazi/yazi/releases/download/${YAZI_VERSION}/yazi-x86_64-unknown-linux-gnu.zip" \
+        -o yazi.zip && \
+    unzip yazi.zip && \
+    mv "yazi-x86_64-unknown-linux-gnu/yazi" /usr/local/bin/yazi && \
+    rm -rf yazi.zip "yazi-x86_64-unknown-linux-gnu"; \
+else \
+    echo "Not installing yazi"; \
+fi
+
+# install nnn (when selected as file browser)
+RUN if [ "${FILE_BROWSER}" = "nnn" ]; then \
+    apt-get update && apt-get install -y nnn && rm -rf /var/lib/apt/lists/*; \
+else \
+    echo "Not installing nnn"; \
+fi
+
+# install superfile/spf (when selected as file browser)
+RUN if [ "${FILE_BROWSER}" = "spf" ]; then \
+    SPF_VERSION=$(curl -s https://api.github.com/repos/yorukot/superfile/releases/latest | jq -r '.tag_name') && \
+    curl -L "https://github.com/yorukot/superfile/releases/download/${SPF_VERSION}/superfile-linux-${SPF_VERSION}-amd64.tar.gz" \
+        -o spf.tar.gz && \
+    tar xf spf.tar.gz && \
+    mv dist/spf /usr/local/bin/spf && \
+    rm -rf spf.tar.gz dist; \
+else \
+    echo "Not installing superfile"; \
+fi
+
 # shell history configuration
 # HISTFILE is injected at runtime by agentjail pointing to /root/.agentjail/<shell>_history
 RUN cat >> ~/.zshrc <<'HISTCONF'
@@ -93,8 +159,8 @@ PROMPT_COMMAND="${PROMPT_COMMAND:+${PROMPT_COMMAND}$'\n'}history -a"
 HISTCONF
 
 # aliases
-RUN echo "alias files='rovr'" >> ~/.${SHELL}rc && \
-    echo "alias edit='${EDITOR}'" >> ~/.${SHELL}rc && \
+RUN echo "alias files='\$FILE_BROWSER'" >> ~/.${SHELL}rc && \
+    echo "alias edit='\$EDITOR'" >> ~/.${SHELL}rc && \
     echo "alias /exit=exit" >> ~/.${SHELL}rc && \
     echo "\n\n" >> ~/.${SHELL}rc
 
@@ -150,8 +216,12 @@ RUN . /etc/os-release && \
     if [ "${USE_CLAUDE_CODE}" = "true" ]; then \
       AVAILABLE_AGENTS="${AVAILABLE_AGENTS} [bold orange3]Claude Code[/bold orange3]"; \
     fi && \
-    AVAILABLE_EDITORS="Available Editors: vim, nano, micro (Primary: [bold blue]${EDITOR}[/bold blue])" && \
-    ALIASES="Available Aliases: [blue][bold]\"files\"[/bold]: [green]rovr[/green], [bold]\"edit\"[/bold]: [green]${EDITOR}[/green][/blue]" && \
+    AVAILABLE_EDITORS="Available Editors: vim, nano, micro" && \
+    [ "${EDITOR}" = "nvim" ] && AVAILABLE_EDITORS="${AVAILABLE_EDITORS}, neovim" || true && \
+    [ "${EDITOR}" = "hx" ] && AVAILABLE_EDITORS="${AVAILABLE_EDITORS}, helix" || true && \
+    [ "${EDITOR}" = "fresh" ] && AVAILABLE_EDITORS="${AVAILABLE_EDITORS}, fresh" || true && \
+    AVAILABLE_EDITORS="${AVAILABLE_EDITORS} (Primary: [bold blue]${EDITOR}[/bold blue])" && \
+    ALIASES="Available Aliases: [blue][bold]\"files\"[/bold]: [green]${FILE_BROWSER}[/green], [bold]\"edit\"[/bold]: [green]${EDITOR}[/green][/blue]" && \
     printf "rich '[b]Welcome to [bold white]AgentJail![/bold white][/b]' --print --rule --rule-style 'bold blue' && rich 'You are now in a container running [bold gold3]$PRETTY_NAME[/bold gold3] \nYour project is mounted at [bold gold3]/project[/bold gold3] \nAvailable Package Managers: [bold dark_goldenrod]$PKG_MANAGER, mise, uv, pip, npm[/bold dark_goldenrod] \nDefault shell: [bold dark_goldenrod]$SHELL[/bold dark_goldenrod] \n \n$AVAILABLE_AGENTS \n \n$AVAILABLE_EDITORS \n \n$ALIASES \n\n type [red bold]exit[/red bold] to exit the container \n\nhave fun, and most importantly, \n[bold medium_orchid]~~ v i b e ~~[/bold medium_orchid]\n\n' --print --style 'blue'" >>  ~/.${SHELL}rc
 
 # Fix file ownership on shell exit: chown /project back to the host user.
@@ -223,10 +293,59 @@ AGENTJAIL_HOOK
 
 ENV HOSTNAME=${HOSTNAME}
 
+# Startup script: downloads the configured file browser into the persistent
+# .agentjail/bin volume if it is not already available in the image.
+# This runs on every container start but exits immediately when the binary is
+# already present (either built into the image or previously cached).
+RUN cat > /usr/local/bin/agentjail-install-browser <<'INSTALL_BROWSER'
+#!/bin/bash
+set -e
+browser="${FILE_BROWSER:-rovr}"
+agentjail_bin="/root/.agentjail/bin"
+mkdir -p "$agentjail_bin"
+
+# Already available — built into the image or cached from a prior run.
+if command -v "$browser" > /dev/null 2>&1 || [ -x "$agentjail_bin/$browser" ]; then
+    exit 0
+fi
+
+echo "agentjail: '$browser' not found in image — downloading..."
+case "$browser" in
+    yazi)
+        ver=$(curl -sf https://api.github.com/repos/sxyazi/yazi/releases/latest | jq -r '.tag_name')
+        curl -fL "https://github.com/sxyazi/yazi/releases/download/${ver}/yazi-x86_64-unknown-linux-gnu.zip" \
+            -o /tmp/yazi.zip
+        unzip -q /tmp/yazi.zip -d /tmp/yazi-dl
+        mv "/tmp/yazi-dl/yazi-x86_64-unknown-linux-gnu/yazi" "$agentjail_bin/yazi"
+        chmod +x "$agentjail_bin/yazi"
+        rm -rf /tmp/yazi.zip /tmp/yazi-dl
+        ;;
+    nnn)
+        apt-get update -y -q
+        apt-get install -y -q nnn
+        rm -rf /var/lib/apt/lists/*
+        cp /usr/bin/nnn "$agentjail_bin/nnn"
+        ;;
+    spf)
+        ver=$(curl -sf https://api.github.com/repos/yorukot/superfile/releases/latest | jq -r '.tag_name')
+        curl -fL "https://github.com/yorukot/superfile/releases/download/${ver}/superfile-linux-${ver}-amd64.tar.gz" \
+            -o /tmp/spf.tar.gz
+        tar -xf /tmp/spf.tar.gz -C /tmp/
+        mv /tmp/dist/spf "$agentjail_bin/spf"
+        chmod +x "$agentjail_bin/spf"
+        rm -rf /tmp/spf.tar.gz /tmp/dist
+        ;;
+    *)
+        echo "agentjail: unknown file browser '$browser' — skipping auto-install." >&2
+        ;;
+esac
+INSTALL_BROWSER
+RUN chmod +x /usr/local/bin/agentjail-install-browser
+
 # Set working directory
 WORKDIR /project
 
 RUN [ ! -f /project/mise.toml ] && touch /project/mise.toml
 
 # Default command
-CMD mise trust --yes && mise install || rich "No mise file detected" --print --style 'dark_goldenrod' && ${SHELL} && cd /project
+CMD /usr/local/bin/agentjail-install-browser || true && mise trust --yes && mise install || rich "No mise file detected" --print --style 'dark_goldenrod' && ${SHELL} && cd /project
