@@ -229,8 +229,8 @@ RUN . /etc/os-release && \
     ALIASES="Available Aliases: [blue][bold]\"files\"[/bold]: [green]${FILE_BROWSER}[/green], [bold]\"edit\"[/bold]: [green]${EDITOR}[/green][/blue]" && \
     printf "rich '[b]Welcome to [bold white]AgentJail![/bold white][/b]' --print --rule --rule-style 'bold blue' && rich 'You are now in a container running [bold gold3]$PRETTY_NAME[/bold gold3] \nYour project is mounted at [bold gold3]/project[/bold gold3] \nAvailable Package Managers: [bold dark_goldenrod]$PKG_MANAGER, mise, uv, pip, npm[/bold dark_goldenrod] \nDefault shell: [bold dark_goldenrod]$SHELL[/bold dark_goldenrod] \n \n$AVAILABLE_AGENTS \n \n$AVAILABLE_EDITORS \n \n$ALIASES \n\n type [red bold]exit[/red bold] to exit the container \n\nhave fun, and most importantly, \n[bold medium_orchid]~~ v i b e ~~[/bold medium_orchid]\n\n' --print --style 'blue'" >>  ~/.${SHELL}rc
 
-# Fix file ownership on shell exit: chown /project back to the host user.
-# HOST_UID and HOST_GID are injected by the agentjail CLI at runtime.
+# Add a `claude-yolo` alias for shells where Claude Code is available.
+# This appends the alias to both zsh and bash startup files.
 RUN cat >> ~/.zshrc <<'CLAUDE_YOLO'
 
 if command -v claude >/dev/null 2>&1; then

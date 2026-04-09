@@ -663,6 +663,7 @@ func main() {
 		log.Info("privileged mode: will install Docker CLI on startup if not already present")
 	}
 
+	var niLockFile *os.File // held when we win the NI lock; released on exit/error
 	if *nonInteractivePtr {
 		// Non-interactive fallback: no running container found in the early path
 		// above. Coordinate with any concurrently-spawned agentjail -N processes
@@ -706,6 +707,7 @@ func main() {
 			// We hold the lock. Start the container with a fixed name so that
 			// concurrently-spawned peers can find and exec into it. Release the
 			// lock once the container is confirmed running.
+			niLockFile = lockFile
 			go func() {
 				for i := 0; i < 75; i++ { // up to 15 s
 					time.Sleep(200 * time.Millisecond)
@@ -716,6 +718,16 @@ func main() {
 				releaseNILock(lockFile)
 			}()
 			runArgs = adaptRunArgsForNonInteractive(runArgs, niName)
+			// Update containerName and the CONTAINER_ID env var already in runArgs
+			// so that metadata and the container's environment reflect the actual name.
+			oldCID := fmt.Sprintf("CONTAINER_ID=%s", containerName)
+			containerName = niName
+			for i, arg := range runArgs {
+				if arg == oldCID {
+					runArgs[i] = fmt.Sprintf("CONTAINER_ID=%s", containerName)
+					break
+				}
+			}
 		}
 
 		runArgs = append(runArgs, "claude")
@@ -768,6 +780,9 @@ func main() {
 
 	if *nonInteractivePtr {
 		if err := runCmd.Run(); err != nil {
+			if niLockFile != nil {
+				releaseNILock(niLockFile)
+			}
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				os.Exit(exitErr.ExitCode())
 			}
