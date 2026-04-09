@@ -7,6 +7,16 @@ import (
 	"strings"
 )
 
+// isContainerRunning returns true if the named container exists and is running.
+func isContainerRunning(name string) bool {
+	cmd := exec.Command("docker", "inspect", "--format", "{{.State.Running}}", name)
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(out)) == "true"
+}
+
 // imageExists returns true if the Docker image with the given name exists locally.
 func imageExists(imageName string) bool {
 	cmd := exec.Command("docker", "image", "inspect", imageName)
