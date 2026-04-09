@@ -680,8 +680,8 @@ func main() {
 			var found string
 			for i := 0; i < 50; i++ {
 				time.Sleep(200 * time.Millisecond)
-				if c, _ := getContainerForDirectory(absDir); c != "" {
-					found = c
+				if isContainerRunning(niName) {
+					found = niName
 					break
 				}
 			}

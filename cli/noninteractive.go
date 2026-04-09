@@ -56,6 +56,7 @@ func tryNILock(path string) (*os.File, bool) {
 		return f, true
 	}
 	if !os.IsExist(err) {
+		log.Debugf("tryNILock: unexpected error acquiring lock at %s: %v", path, err)
 		return nil, false
 	}
 	// Lock exists — check if it is stale (owner process crashed).
