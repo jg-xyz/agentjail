@@ -132,6 +132,8 @@ func main() {
 	buildNoCachePtr := flag.Bool("build-no-cache", false, "Build/rebuild the agentjail image without cache")
 	privilegedPtr := flag.Bool("P", false, "Run container in privileged mode with Docker daemon exposed")
 	autoStartPtr := flag.Bool("A", false, "Automatically start the preferred agent when the container starts")
+	nonInteractivePtr := flag.Bool("N", false, "Non-interactive mode for use as a process wrapper (e.g. claudeCode.claudeProcessWrapper)")
+	flag.BoolVar(nonInteractivePtr, "noninteractive", false, "Non-interactive mode for use as a process wrapper")
 	verbosePtr := flag.Bool("verbose", false, "Enable verbose/debug logging")
 
 	var volumeFlags arrayFlags
@@ -214,6 +216,28 @@ func main() {
 		absConfig = ""
 	}
 
+	// 3a. Non-interactive early path: exec into an already-running container.
+	// This is the fast path when VS Code spawns agentjail as a process wrapper
+	// and an interactive agentjail session is already open for the same project.
+	if *nonInteractivePtr {
+		existingContainer, err := getContainerForDirectory(absDir)
+		if err == nil && existingContainer != "" {
+			log.Debugf("non-interactive: found running container %q, using docker exec", existingContainer)
+			execArgs := nonInteractiveExecArgs(existingContainer, flag.Args())
+			execCmd := exec.Command("docker", execArgs...)
+			execCmd.Stdin = os.Stdin
+			execCmd.Stdout = os.Stdout
+			execCmd.Stderr = os.Stderr
+			if err := execCmd.Run(); err != nil {
+				if exitErr, ok := err.(*exec.ExitError); ok {
+					os.Exit(exitErr.ExitCode())
+				}
+				log.Fatalf("exec into container: %v", err)
+			}
+			return
+		}
+	}
+
 	// 3. Docker Image Logic
 	imageName := "agentjail"
 	needsBuild := !imageExists(imageName) || *buildPtr || *buildNoCachePtr
@@ -271,7 +295,11 @@ func main() {
 
 		buildArgs = append(buildArgs, ".")
 		buildCmd := exec.Command("docker", buildArgs...)
-		buildCmd.Stdout = os.Stdout
+		if *nonInteractivePtr {
+			buildCmd.Stdout = os.Stderr // keep stdout clean for the protocol stream
+		} else {
+			buildCmd.Stdout = os.Stdout
+		}
 		buildCmd.Stderr = os.Stderr
 
 		if err := buildCmd.Run(); err != nil {
@@ -635,7 +663,76 @@ func main() {
 		log.Info("privileged mode: will install Docker CLI on startup if not already present")
 	}
 
-	if globalConfig.ZellijEnabled() {
+	var niLockFile *os.File // held when we win the NI lock; released on exit/error
+	if *nonInteractivePtr {
+		// Non-interactive fallback: no running container found in the early path
+		// above. Coordinate with any concurrently-spawned agentjail -N processes
+		// (VS Code spawns the process wrapper twice when opening a session) so
+		// that only one container starts and the other execs into it.
+		niName := niContainerNameForPrefix(prefix)
+		lockPath := filepath.Join(agentJailDir, "ni.lock")
+
+		lockFile, won := tryNILock(lockPath)
+		if !won {
+			// Another process holds the lock and is starting a container.
+			// Wait up to 10 s for it to appear, then exec into it.
+			log.Debugf("non-interactive: waiting for concurrent container start (lock held by another process)")
+			var found string
+			for i := 0; i < 50; i++ {
+				time.Sleep(200 * time.Millisecond)
+				if isContainerRunning(niName) {
+					found = niName
+					break
+				}
+			}
+			if found != "" {
+				log.Debugf("non-interactive: found container %q started by peer, exec-ing into it", found)
+				execArgs := nonInteractiveExecArgs(found, flag.Args())
+				execCmd := exec.Command("docker", execArgs...)
+				execCmd.Stdin = os.Stdin
+				execCmd.Stdout = os.Stdout
+				execCmd.Stderr = os.Stderr
+				if err := execCmd.Run(); err != nil {
+					if exitErr, ok := err.(*exec.ExitError); ok {
+						os.Exit(exitErr.ExitCode())
+					}
+					log.Fatalf("exec into container: %v", err)
+				}
+				return
+			}
+			// Timed out — start our own container without a name to avoid conflicts.
+			log.Debugf("non-interactive: timed out waiting for peer container; starting own container")
+			runArgs = adaptRunArgsForNonInteractive(runArgs, "")
+		} else {
+			// We hold the lock. Start the container with a fixed name so that
+			// concurrently-spawned peers can find and exec into it. Release the
+			// lock once the container is confirmed running.
+			niLockFile = lockFile
+			go func() {
+				for i := 0; i < 75; i++ { // up to 15 s
+					time.Sleep(200 * time.Millisecond)
+					if isContainerRunning(niName) {
+						break
+					}
+				}
+				releaseNILock(lockFile)
+			}()
+			runArgs = adaptRunArgsForNonInteractive(runArgs, niName)
+			// Update containerName and the CONTAINER_ID env var already in runArgs
+			// so that metadata and the container's environment reflect the actual name.
+			oldCID := fmt.Sprintf("CONTAINER_ID=%s", containerName)
+			containerName = niName
+			for i, arg := range runArgs {
+				if arg == oldCID {
+					runArgs[i] = fmt.Sprintf("CONTAINER_ID=%s", containerName)
+					break
+				}
+			}
+		}
+
+		runArgs = append(runArgs, "claude")
+		runArgs = append(runArgs, flag.Args()...)
+	} else if globalConfig.ZellijEnabled() {
 		if *autoStartPtr {
 			log.Info("-A flag is no longer needed; the preferred agent launches automatically in the first zellij tab")
 		}
@@ -681,11 +778,23 @@ func main() {
 	runCmd.Stdout = os.Stdout
 	runCmd.Stderr = os.Stderr
 
-	err = runWithTerminalRestore(runCmd)
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			log.Fatalf("container exited with code %d", exitErr.ExitCode())
+	if *nonInteractivePtr {
+		if err := runCmd.Run(); err != nil {
+			if niLockFile != nil {
+				releaseNILock(niLockFile)
+			}
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				os.Exit(exitErr.ExitCode())
+			}
+			log.Fatalf("running Docker container: %v", err)
 		}
-		log.Fatalf("running Docker container: %v", err)
+	} else {
+		err = runWithTerminalRestore(runCmd)
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				log.Fatalf("container exited with code %d", exitErr.ExitCode())
+			}
+			log.Fatalf("running Docker container: %v", err)
+		}
 	}
 }

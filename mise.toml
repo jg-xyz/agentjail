@@ -1,18 +1,17 @@
 [tools]
 bat = "latest"
-claude = "latest"
+claude = "latest" #"2.0.28"
+gh = "latest"
 go = "1.25.3"
 
 [tasks.build]
-run = "mkdir -p ../dist && go build -buildvcs=false -o ../dist/agentjail ."
+run         = "mkdir -p ../dist && go build -buildvcs=false -o ../dist/agentjail ."
+run_windows = "mkdir ../dist -Force; go build -o ../dist/agentjail.exe ."
 dir = "cli"
 
 [tasks.clean-build]
-run = "docker rmi -f agentjail; mkdir -p ../dist && go build -buildvcs=false -o ../dist/agentjail ."
-dir = "cli"
-
-[tasks.build_win]
-run = "mkdir ../dist --force && go build -o ../dist/agentjail.exe ."
+run         = "docker rmi -f agentjail; mkdir -p ../dist && go build -buildvcs=false -o ../dist/agentjail ."
+run_windows = "powershell -c \"try{ docker rmi -f agentjail }catch{ write-host 'Agentjail image not found' }; mkdir ../dist -Force; go build -o ../dist/agentjail.exe .\""
 dir = "cli"
 
 [tasks.test]

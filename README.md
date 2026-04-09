@@ -47,6 +47,7 @@ Run from inside a project directory. With no arguments, AgentJail detects an exi
 | `-C <path>` | `opencode.json` | Path to an OpenCode config file |
 | `-E <path>` | — | Editor config file to mount at `/root/<filename>` |
 | `-D <path>` | — | Custom Dockerfile to use |
+| `-N` / `--noninteractive` | — | Non-interactive mode — run Claude inside the container without a TTY (used as a process wrapper, e.g. for VS Code's `claudeCode.claudeProcessWrapper`) |
 | `--config` | — | Print a clean config template to stdout and exit |
 | `--config <path>` | — | Load config from a specific file instead of the default |
 | `--verbose` | — | Enable debug logging |
@@ -301,6 +302,35 @@ container_env_vars:
 If `anthropic_api_key` is empty and `ANTHROPIC_API_KEY` is not in `container_env_vars`, AgentJail will automatically forward the host's `ANTHROPIC_API_KEY` env var if it is set.
 
 After enabling any agent, rebuild the image:
+
+```sh
+agentjail -b
+```
+
+### VS Code integration (Claude Code extension)
+
+The Claude Code VS Code extension supports a `claudeCode.claudeProcessWrapper` setting that wraps the `claude` process. You can point it at AgentJail so every Claude Code session inside VS Code runs inside an isolated container.
+
+Set the wrapper in your VS Code settings:
+
+```json
+"claudeCode.claudeProcessWrapper": "/path/to/agentjail -N --"
+```
+
+The `-N` flag enables non-interactive mode (no TTY, stdin/stdout passed through cleanly). The `--` stops AgentJail's own flag parser so claude's flags are forwarded unmodified.
+
+**How it works:**
+
+1. If an AgentJail container is already running for the project (from an interactive session), VS Code's claude process runs inside it via `docker exec` — fast, no container startup overhead.
+2. If no container is running, AgentJail starts a fresh ephemeral container (`--rm`) and runs claude directly inside it. To coordinate concurrent `-N` starts (e.g. VS Code opening two sessions simultaneously), the first process uses a fixed-name container (`agentjail-ni.<prefix>`) so the second can exec into it instead of starting a duplicate.
+
+The agent `claude` must be enabled in your config and the image must be built:
+
+```yaml
+agent_frameworks:
+  claude:
+    enabled: true
+```
 
 ```sh
 agentjail -b

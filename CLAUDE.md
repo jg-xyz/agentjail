@@ -11,8 +11,7 @@ AgentJail is a CLI tool that launches AI coding agents (GitHub Copilot, OpenCode
 All commands run from the `cli/` directory (where `go.mod` lives). Mise tasks handle the `cd` automatically.
 
 ```bash
-mise build           # Build Linux binary → ../dist/agentjail
-mise build_win       # Build Windows binary → ../dist/agentjail.exe
+mise build           # Build binary (Linux → ../dist/agentjail, Windows → ../dist/agentjail.exe)
 mise test            # go test ./... -v
 mise run             # go run .
 ```
