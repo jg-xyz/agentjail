@@ -227,6 +227,9 @@ RUN . /etc/os-release && \
     [ "${EDITOR}" = "fresh" ] && AVAILABLE_EDITORS="${AVAILABLE_EDITORS}, fresh" || true && \
     AVAILABLE_EDITORS="${AVAILABLE_EDITORS} (Primary: [bold blue]${EDITOR}[/bold blue])" && \
     ALIASES="Available Aliases: [blue][bold]\"files\"[/bold]: [green]${FILE_BROWSER}[/green], [bold]\"edit\"[/bold]: [green]${EDITOR}[/green][/blue]" && \
+    if [ "${USE_CLAUDE_CODE}" = "true" ]; then \
+      ALIASES="${ALIASES}[blue], [bold]\"claude-yolo\"[/bold]: [green]claude --dangerously-skip-permissions[/green][/blue]"; \
+    fi && \
     printf "rich '[b]Welcome to [bold white]AgentJail![/bold white][/b]' --print --rule --rule-style 'bold blue' && rich 'You are now in a container running [bold gold3]$PRETTY_NAME[/bold gold3] \nYour project is mounted at [bold gold3]/project[/bold gold3] \nAvailable Package Managers: [bold dark_goldenrod]$PKG_MANAGER, mise, uv, pip, npm[/bold dark_goldenrod] \nDefault shell: [bold dark_goldenrod]$SHELL[/bold dark_goldenrod] \n \n$AVAILABLE_AGENTS \n \n$AVAILABLE_EDITORS \n \n$ALIASES \n\n type [red bold]exit[/red bold] to exit the container \n\nhave fun, and most importantly, \n[bold medium_orchid]~~ v i b e ~~[/bold medium_orchid]\n\n' --print --style 'blue'" >>  ~/.${SHELL}rc
 
 # Add a `claude-yolo` alias for shells where Claude Code is available.
