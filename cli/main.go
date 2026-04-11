@@ -526,12 +526,15 @@ func main() {
 		}
 	}
 
-	// Mount system gitconfig if enabled
+	// Mount system gitconfig if enabled.
+	// The file is mounted read-only at /tmp/.gitconfig and copied to ~/.gitconfig
+	// at container startup (see gitconfigSetup below), so the container gets its
+	// own mutable copy rather than a direct bind-mount into the home directory.
 	if globalConfig.MountSystemGitconfig {
 		usr, _ := user.Current()
 		gitconfigPath := filepath.Join(usr.HomeDir, ".gitconfig")
 		if _, err := os.Stat(gitconfigPath); err == nil {
-			gitconfigMount := fmt.Sprintf("%s:/root/.gitconfig", gitconfigPath)
+			gitconfigMount := fmt.Sprintf("%s:/tmp/.gitconfig:ro", gitconfigPath)
 			runArgs = append(runArgs, "-v", gitconfigMount)
 			volumes = append(volumes, gitconfigMount)
 		}
@@ -667,6 +670,11 @@ func main() {
 		dockerSetup = "command -v docker >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq docker-ce-cli && apt-get clean && rm -rf /var/lib/apt/lists/*); "
 		log.Info("privileged mode: will install Docker CLI on startup if not already present")
 	}
+	if globalConfig.MountSystemGitconfig {
+		// Copy the read-only /tmp mount to the user's home so git operations
+		// inside the container use the host identity without modifying the host file.
+		dockerSetup += `[ -f /tmp/.gitconfig ] && cp /tmp/.gitconfig ~/.gitconfig 2>/dev/null; `
+	}
 
 	var niLockFile *os.File // held when we win the NI lock; released on exit/error
 	if *nonInteractivePtr {
@@ -768,8 +776,9 @@ func main() {
 				runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 			}
 		} else if dockerSetup != "" {
-			// No -A and no zellij, but privileged: override the Dockerfile CMD so
-			// we can prepend the Docker CLI install before dropping into the shell.
+			// No -A and no zellij, but startup commands are needed (e.g. privileged
+			// Docker CLI install, gitconfig copy): override the Dockerfile CMD so
+			// we can prepend them before dropping into the shell.
 			initCmd := fmt.Sprintf("%smise trust --yes /project && mise install; exec %s", dockerSetup, shell)
 			runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 		}
