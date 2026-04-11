@@ -90,7 +90,14 @@ func TestDockerfileTemplate_EditorMOTDShowsFresh(t *testing.T) {
 
 func TestDockerfileTemplate_SudoInstalled(t *testing.T) {
 	df := dockerfile(t)
-	if !strings.Contains(df, "sudo") {
+	found := false
+	for _, line := range strings.Split(df, "\n") {
+		if strings.Contains(line, "apt-get install") && strings.Contains(line, "sudo") {
+			found = true
+			break
+		}
+	}
+	if !found {
 		t.Error("Dockerfile apt-get install block should include sudo")
 	}
 }

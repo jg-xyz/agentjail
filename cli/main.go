@@ -768,18 +768,18 @@ func main() {
 			}
 			if agent != "" {
 				cmd := agentCommand(agent, claudeExtraContext)
-				initCmd := fmt.Sprintf("%smise trust --yes /project && mise install; %s; exec %s", dockerSetup, cmd, shell)
+				initCmd := fmt.Sprintf("/usr/local/bin/agentjail-install-browser || true; %smise trust --yes /project && mise install; %s; exec %s", dockerSetup, cmd, shell)
 				runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 				log.Infof("auto-starting agent: %s", agent)
 			} else {
-				initCmd := fmt.Sprintf("%smise trust --yes /project && mise install; exec %s", dockerSetup, shell)
+				initCmd := fmt.Sprintf("/usr/local/bin/agentjail-install-browser || true; %smise trust --yes /project && mise install; exec %s", dockerSetup, shell)
 				runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 			}
 		} else if dockerSetup != "" {
 			// No -A and no zellij, but startup commands are needed (e.g. privileged
 			// Docker CLI install, gitconfig copy): override the Dockerfile CMD so
 			// we can prepend them before dropping into the shell.
-			initCmd := fmt.Sprintf("%smise trust --yes /project && mise install; exec %s", dockerSetup, shell)
+			initCmd := fmt.Sprintf("/usr/local/bin/agentjail-install-browser || true; %smise trust --yes /project && mise install; exec %s", dockerSetup, shell)
 			runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 		}
 		// No -A, no zellij, no privileged: rely on the Dockerfile CMD (mise trust/install + shell).
