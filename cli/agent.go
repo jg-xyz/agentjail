@@ -20,13 +20,8 @@ func enabledAgents(config *GlobalConfig) []string {
 // claudeSystemPrompt is appended to Claude Code's context on every launch so it
 // knows which CLI tools are pre-installed in the container.
 const claudeSystemPrompt = "Available CLI tools in this container: " +
-	"git, gh (GitHub CLI), curl, wget, jq, yq, " +
-	"bat (better cat), eza (better ls), fd (better find), fzf (fuzzy finder), " +
-	"rg (ripgrep, better grep), tv (television TUI finder), " +
-	"node, npm, python3, uv (Python package manager), pip, " +
-	"mise (version manager), aws (AWS CLI), " +
-	"micro, vim, nano (editors), rich (terminal rich text), " +
-	"zellij (terminal multiplexer)"
+	"git, gh (GitHub), curl, wget, jq, yq, mise (version manager), aws (AWS CLI), " +
+	"eza, fd, fzf, rg (ripgrep), node, npm, python3, uv, pip, rich"
 
 // resolveClaudeContext merges the config-level system prompt addition with the
 // value of the --claude-context flag. Either or both may be empty. When both
