@@ -88,6 +88,50 @@ func TestDockerfileTemplate_EditorMOTDShowsFresh(t *testing.T) {
 	}
 }
 
+func TestDockerfileTemplate_SudoInstalled(t *testing.T) {
+	df := dockerfile(t)
+	found := false
+	for _, line := range strings.Split(df, "\n") {
+		if strings.Contains(line, "apt-get install") && strings.Contains(line, "sudo") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Dockerfile apt-get install block should include sudo")
+	}
+}
+
+func TestDockerfileTemplate_UbuntuUserConfigured(t *testing.T) {
+	df := dockerfile(t)
+	// usermod must set home to /root so all existing dotfiles are inherited
+	if !strings.Contains(df, "usermod") || !strings.Contains(df, "-d /root") {
+		t.Error("Dockerfile should configure ubuntu user with home /root via usermod -d /root")
+	}
+	if !strings.Contains(df, "chown -R ubuntu:ubuntu /root") {
+		t.Error("Dockerfile should transfer /root ownership to ubuntu")
+	}
+	if !strings.Contains(df, "sudoers.d/ubuntu") {
+		t.Error("Dockerfile should create a sudoers drop-in for ubuntu")
+	}
+}
+
+func TestDockerfileTemplate_UserDirective(t *testing.T) {
+	df := dockerfile(t)
+	if !strings.Contains(df, "\nUSER ubuntu\n") {
+		t.Error("Dockerfile should switch to USER ubuntu before the final WORKDIR/CMD")
+	}
+}
+
+func TestDockerfileTemplate_ExitHooksUseSudoChown(t *testing.T) {
+	// The container runs as ubuntu (non-root), so ownership-fix hooks must use
+	// sudo chown or they silently fail when restoring host UID/GID.
+	df := dockerfile(t)
+	if strings.Contains(df, "chown -R \"${HOST_UID}") && !strings.Contains(df, "sudo chown -R \"${HOST_UID}") {
+		t.Error("exit hook chown commands must use sudo chown (container runs as non-root ubuntu)")
+	}
+}
+
 func TestDockerfileTemplate_EditorInstallsAreConditional(t *testing.T) {
 	// Each editor install block must have a matching "Not installing" fallback
 	// so the build doesn't fail when a different editor is selected.

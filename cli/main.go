@@ -526,12 +526,15 @@ func main() {
 		}
 	}
 
-	// Mount system gitconfig if enabled
+	// Mount system gitconfig if enabled.
+	// The file is mounted read-only at /tmp/.gitconfig and copied to ~/.gitconfig
+	// via the dockerSetup startup string, so the container gets its own mutable
+	// copy rather than a direct bind-mount into the home directory.
 	if globalConfig.MountSystemGitconfig {
 		usr, _ := user.Current()
 		gitconfigPath := filepath.Join(usr.HomeDir, ".gitconfig")
 		if _, err := os.Stat(gitconfigPath); err == nil {
-			gitconfigMount := fmt.Sprintf("%s:/root/.gitconfig", gitconfigPath)
+			gitconfigMount := fmt.Sprintf("%s:/tmp/.gitconfig:ro", gitconfigPath)
 			runArgs = append(runArgs, "-v", gitconfigMount)
 			volumes = append(volumes, gitconfigMount)
 		}
@@ -664,8 +667,13 @@ func main() {
 	// already installed in the image.
 	dockerSetup := ""
 	if *privilegedPtr {
-		dockerSetup = "command -v docker >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq docker-ce-cli && apt-get clean && rm -rf /var/lib/apt/lists/*); "
+		dockerSetup = "command -v docker >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get install -y -qq docker-ce-cli && sudo apt-get clean && sudo rm -rf /var/lib/apt/lists/*); "
 		log.Info("privileged mode: will install Docker CLI on startup if not already present")
+	}
+	if globalConfig.MountSystemGitconfig {
+		// Copy the read-only /tmp mount to the user's home so git operations
+		// inside the container use the host identity without modifying the host file.
+		dockerSetup += `[ -f /tmp/.gitconfig ] && cp /tmp/.gitconfig ~/.gitconfig 2>/dev/null; `
 	}
 
 	var niLockFile *os.File // held when we win the NI lock; released on exit/error
@@ -748,7 +756,7 @@ func main() {
 		// Launch zellij with the 3-tab layout. mise trust/install runs first so all
 		// tabs see the project's tools from the start.
 		zellijEntrypoint := buildZellijEntrypoint(dirName)
-		chownFix := `if [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true; fi`
+		chownFix := `if [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then sudo chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true; fi`
 		runArgs = append(runArgs, "sh", "-c", dockerSetup+zellijEntrypoint+"; "+chownFix)
 	} else {
 		// Plain shell mode: restore the original -A behaviour.
@@ -760,17 +768,18 @@ func main() {
 			}
 			if agent != "" {
 				cmd := agentCommand(agent, claudeExtraContext)
-				initCmd := fmt.Sprintf("%smise trust --yes /project && mise install; %s; exec %s", dockerSetup, cmd, shell)
+				initCmd := fmt.Sprintf("/usr/local/bin/agentjail-install-browser || true; %smise trust --yes /project && mise install; %s; exec %s", dockerSetup, cmd, shell)
 				runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 				log.Infof("auto-starting agent: %s", agent)
 			} else {
-				initCmd := fmt.Sprintf("%smise trust --yes /project && mise install; exec %s", dockerSetup, shell)
+				initCmd := fmt.Sprintf("/usr/local/bin/agentjail-install-browser || true; %smise trust --yes /project && mise install; exec %s", dockerSetup, shell)
 				runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 			}
 		} else if dockerSetup != "" {
-			// No -A and no zellij, but privileged: override the Dockerfile CMD so
-			// we can prepend the Docker CLI install before dropping into the shell.
-			initCmd := fmt.Sprintf("%smise trust --yes /project && mise install; exec %s", dockerSetup, shell)
+			// No -A and no zellij, but startup commands are needed (e.g. privileged
+			// Docker CLI install, gitconfig copy): override the Dockerfile CMD so
+			// we can prepend them before dropping into the shell.
+			initCmd := fmt.Sprintf("/usr/local/bin/agentjail-install-browser || true; %smise trust --yes /project && mise install; exec %s", dockerSetup, shell)
 			runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 		}
 		// No -A, no zellij, no privileged: rely on the Dockerfile CMD (mise trust/install + shell).

@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
+    sudo \
     unzip \
     vim \
     wget \
@@ -46,19 +47,21 @@ ENV PATH="/root/.agentjail/bin:${PATH}"
 # configure zsh
 RUN [ "${SHELL}" = "zsh" ] && chsh -s $(which zsh)
 
-# Install mise
-RUN curl https://mise.run | sh
-ENV PATH="/root/.local/bin:$PATH"
-RUN echo 'eval "$(~/.local/bin/mise activate bash)"' >> ~/.bashrc && \
-    echo 'eval "$(~/.local/bin/mise activate zsh)"' >> ~/.zshrc
+# Install mise system-wide (accessible to all users)
+RUN curl https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh && \
+    chmod a+x /usr/local/bin/mise
+ENV MISE_DATA_DIR=/usr/local/share/mise
+RUN echo 'eval "$(mise activate bash)"' >> ~/.bashrc && \
+    echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
 
 # Add mise shims to PATH so mise-managed tools (node, etc.) are available
 # in non-interactive contexts (docker exec, process wrappers) without needing
 # `mise activate` to run first.
-ENV PATH="/root/.local/share/mise/shims:${PATH}"
+ENV PATH="/usr/local/share/mise/shims:${PATH}"
 
-# install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# install uv system-wide
+RUN curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh && \
+    chmod a+x /usr/local/bin/uv /usr/local/bin/uvx 2>/dev/null || true
 
 # install tools
 RUN mise use -g \
@@ -73,7 +76,8 @@ RUN mise use -g \
     yq \
     zellij \
     pipx:rich-cli \
-    pipx:rovr
+    pipx:rovr && \
+    chown -R ubuntu:ubuntu /usr/local/share/mise
 
 #FROM base as agentjail
 #RUN curl -sS https://starship.rs/install.sh | sh -s -- -p unknown-linux-gnu -a x86_64
@@ -269,7 +273,7 @@ RUN cat >> ~/.zshrc <<'OWNERSHIP_FIX'
 zshexit() {
     # Skip in zellij: the launcher wrapper handles chown once after the session ends.
     if [ -z "${ZELLIJ}" ] && [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then
-        chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true
+        sudo chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true
     fi
 }
 OWNERSHIP_FIX
@@ -277,7 +281,7 @@ OWNERSHIP_FIX
 RUN cat >> ~/.bashrc <<'OWNERSHIP_FIX'
 
 # Skip in zellij: the launcher wrapper handles chown once after the session ends.
-trap 'if [ -z "${ZELLIJ}" ] && [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true; fi' EXIT
+trap 'if [ -z "${ZELLIJ}" ] && [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then sudo chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true; fi' EXIT
 OWNERSHIP_FIX
 
 # install starship
@@ -359,9 +363,9 @@ case "$browser" in
         rm -rf /tmp/yazi.zip /tmp/yazi-dl
         ;;
     nnn)
-        apt-get update -y -q
-        apt-get install -y -q nnn
-        rm -rf /var/lib/apt/lists/*
+        sudo apt-get update -y -q
+        sudo apt-get install -y -q nnn
+        sudo rm -rf /var/lib/apt/lists/*
         cp /usr/bin/nnn "$agentjail_bin/nnn"
         ;;
     spf)
@@ -379,6 +383,17 @@ case "$browser" in
 esac
 INSTALL_BROWSER
 RUN chmod +x /usr/local/bin/agentjail-install-browser
+
+# Configure the ubuntu user to use /root as home so it inherits all dotfiles,
+# tool configs, and volume mounts (which all target /root/...).
+# Give it passwordless sudo so exit-hook chown operations work.
+RUN usermod -d /root -s "$(which ${SHELL})" ubuntu && \
+    chmod 755 /root && \
+    chown -R ubuntu:ubuntu /root && \
+    echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ubuntu && \
+    chmod 0440 /etc/sudoers.d/ubuntu
+
+USER ubuntu
 
 # Set working directory
 WORKDIR /project
