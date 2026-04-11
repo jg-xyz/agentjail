@@ -528,8 +528,8 @@ func main() {
 
 	// Mount system gitconfig if enabled.
 	// The file is mounted read-only at /tmp/.gitconfig and copied to ~/.gitconfig
-	// at container startup (see gitconfigSetup below), so the container gets its
-	// own mutable copy rather than a direct bind-mount into the home directory.
+	// via the dockerSetup startup string, so the container gets its own mutable
+	// copy rather than a direct bind-mount into the home directory.
 	if globalConfig.MountSystemGitconfig {
 		usr, _ := user.Current()
 		gitconfigPath := filepath.Join(usr.HomeDir, ".gitconfig")
@@ -667,7 +667,7 @@ func main() {
 	// already installed in the image.
 	dockerSetup := ""
 	if *privilegedPtr {
-		dockerSetup = "command -v docker >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq docker-ce-cli && apt-get clean && rm -rf /var/lib/apt/lists/*); "
+		dockerSetup = "command -v docker >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get install -y -qq docker-ce-cli && sudo apt-get clean && sudo rm -rf /var/lib/apt/lists/*); "
 		log.Info("privileged mode: will install Docker CLI on startup if not already present")
 	}
 	if globalConfig.MountSystemGitconfig {
@@ -756,7 +756,7 @@ func main() {
 		// Launch zellij with the 3-tab layout. mise trust/install runs first so all
 		// tabs see the project's tools from the start.
 		zellijEntrypoint := buildZellijEntrypoint(dirName)
-		chownFix := `if [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true; fi`
+		chownFix := `if [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then sudo chown -R "${HOST_UID}:${HOST_GID}" /project /root/.agentjail 2>/dev/null || true; fi`
 		runArgs = append(runArgs, "sh", "-c", dockerSetup+zellijEntrypoint+"; "+chownFix)
 	} else {
 		// Plain shell mode: restore the original -A behaviour.

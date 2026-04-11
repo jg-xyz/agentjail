@@ -363,9 +363,9 @@ case "$browser" in
         rm -rf /tmp/yazi.zip /tmp/yazi-dl
         ;;
     nnn)
-        apt-get update -y -q
-        apt-get install -y -q nnn
-        rm -rf /var/lib/apt/lists/*
+        sudo apt-get update -y -q
+        sudo apt-get install -y -q nnn
+        sudo rm -rf /var/lib/apt/lists/*
         cp /usr/bin/nnn "$agentjail_bin/nnn"
         ;;
     spf)

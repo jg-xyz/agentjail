@@ -117,11 +117,11 @@ func TestDockerfileTemplate_UserDirective(t *testing.T) {
 }
 
 func TestDockerfileTemplate_ExitHooksUseSudoChown(t *testing.T) {
-	// The container runs as aj (non-root), so ownership-fix hooks must use
+	// The container runs as ubuntu (non-root), so ownership-fix hooks must use
 	// sudo chown or they silently fail when restoring host UID/GID.
 	df := dockerfile(t)
 	if strings.Contains(df, "chown -R \"${HOST_UID}") && !strings.Contains(df, "sudo chown -R \"${HOST_UID}") {
-		t.Error("exit hook chown commands must use sudo chown (container runs as non-root aj)")
+		t.Error("exit hook chown commands must use sudo chown (container runs as non-root ubuntu)")
 	}
 }
 
