@@ -49,6 +49,7 @@ github_token: ""
 anthropic_api_key: ""
 container_env_vars: {}
 port_mappings: []
+claude_append_system_prompt: ""
 agent_frameworks:
   opencode:
     enabled: false
@@ -103,7 +104,7 @@ default_shell: bash
 		"zellij_theme", "file_browser", "zellij_plugins",
 		"inject_gh_auth_token", "preferred_agent", "github_token",
 		"anthropic_api_key", "container_env_vars", "port_mappings",
-		"agent_frameworks",
+		"claude_append_system_prompt", "agent_frameworks",
 	} {
 		if _, ok := cfg[key]; !ok {
 			t.Errorf("expected key %q to be added but it is missing", key)
@@ -180,6 +181,7 @@ github_token: ""
 anthropic_api_key: ""
 container_env_vars: {}
 port_mappings: []
+claude_append_system_prompt: ""
 agent_frameworks:
   opencode:
     enabled: false
