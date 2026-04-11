@@ -250,14 +250,16 @@ CLAUDE_YOLO
 
 # aj: shorthand to (re-)launch the default agentjail zellij session from inside
 # the container (claude, terminal, and files tabs).
+# Uses the same session name as the CLI entrypoint (derived from CONTAINER_ID)
+# so that aj always targets the named session rather than creating a new one.
 RUN cat >> ~/.zshrc <<'AJ_ALIAS'
 
-alias aj='ZELLIJ_CONFIG_DIR=/root/.agentjail/zellij zellij --new-session-with-layout /root/.agentjail/zellij/layout.kdl'
+alias aj='ZELLIJ_CONFIG_DIR=/root/.agentjail/zellij zellij --new-session-with-layout /root/.agentjail/zellij/layout.kdl --session "${CONTAINER_ID#agentjail.}"'
 AJ_ALIAS
 
 RUN cat >> ~/.bashrc <<'AJ_ALIAS'
 
-alias aj='ZELLIJ_CONFIG_DIR=/root/.agentjail/zellij zellij --new-session-with-layout /root/.agentjail/zellij/layout.kdl'
+alias aj='ZELLIJ_CONFIG_DIR=/root/.agentjail/zellij zellij --new-session-with-layout /root/.agentjail/zellij/layout.kdl --session "${CONTAINER_ID#agentjail.}"'
 AJ_ALIAS
 
 # Fix file ownership on shell exit: chown /project back to the host user.
