@@ -135,6 +135,7 @@ func main() {
 	nonInteractivePtr := flag.Bool("N", false, "Non-interactive mode for use as a process wrapper (e.g. claudeCode.claudeProcessWrapper)")
 	flag.BoolVar(nonInteractivePtr, "noninteractive", false, "Non-interactive mode for use as a process wrapper")
 	verbosePtr := flag.Bool("verbose", false, "Enable verbose/debug logging")
+	claudeContextPtr := flag.String("claude-context", "", "Extra text appended to Claude Code's system prompt (combined with claude_append_system_prompt from config)")
 
 	var volumeFlags arrayFlags
 	flag.Var(&volumeFlags, "v", "Additional volume mounts (e.g. /host:/container)")
@@ -147,6 +148,10 @@ func main() {
 	if *verbosePtr {
 		enableVerboseLogging()
 	}
+
+	// Resolve the extra Claude context: config value and --claude-context flag are
+	// concatenated (separated by a blank line) so both contribute.
+	claudeExtraContext := resolveClaudeContext(globalConfig.ClaudeAppendSystemPrompt, *claudeContextPtr)
 
 	// Check if no arguments were provided (except flags)
 	if len(os.Args) == 1 {
@@ -366,7 +371,7 @@ func main() {
 		}
 		zellijAgentCmd := ""
 		if zellijAgentName != "" {
-			zellijAgentCmd = agentCommand(zellijAgentName)
+			zellijAgentCmd = agentCommand(zellijAgentName, claudeExtraContext)
 		}
 		if err := writeZellijFiles(agentJailDir, globalConfig.ZellijThemeOrDefault(), zellijAgentName, zellijAgentCmd, globalConfig.FileBrowserCmd(), *shellPtr, globalConfig.ZellijPlugins); err != nil {
 			log.Warnf("could not write zellij layout: %v", err)
@@ -750,7 +755,7 @@ func main() {
 				agent = chooseEnabledAgent(globalConfig)
 			}
 			if agent != "" {
-				cmd := agentCommand(agent)
+				cmd := agentCommand(agent, claudeExtraContext)
 				initCmd := fmt.Sprintf("%smise trust --yes /project && mise install; %s; exec %s", dockerSetup, cmd, shell)
 				runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 				log.Infof("auto-starting agent: %s", agent)

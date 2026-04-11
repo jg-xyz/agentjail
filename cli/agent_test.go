@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -91,18 +92,61 @@ func TestAgentCommand_Known(t *testing.T) {
 	}{
 		{"opencode", "opencode"},
 		{"copilot", "copilot"},
-		{"claude", "claude"},
 	}
 	for _, tt := range tests {
-		if got := agentCommand(tt.input); got != tt.expected {
+		if got := agentCommand(tt.input, ""); got != tt.expected {
 			t.Errorf("agentCommand(%q) = %q, want %q", tt.input, got, tt.expected)
+		}
+	}
+}
+
+func TestAgentCommand_Claude(t *testing.T) {
+	got := agentCommand("claude", "")
+	if !strings.HasPrefix(got, "claude --append-system-prompt ") {
+		t.Errorf("agentCommand(claude) should start with 'claude --append-system-prompt', got %q", got)
+	}
+	if !strings.Contains(got, "rg") || !strings.Contains(got, "fd") || !strings.Contains(got, "bat") {
+		t.Errorf("agentCommand(claude) system prompt missing expected tools, got %q", got)
+	}
+}
+
+func TestAgentCommand_ClaudeExtraContext(t *testing.T) {
+	got := agentCommand("claude", "Always write tests.")
+	if !strings.Contains(got, "Always write tests.") {
+		t.Errorf("agentCommand(claude, extra) should contain extra context, got %q", got)
+	}
+	// Both the base tools list and the extra context must appear.
+	if !strings.Contains(got, "rg") {
+		t.Errorf("agentCommand(claude, extra) should still contain base tools, got %q", got)
+	}
+	// The two sections must be separated by a blank line.
+	if !strings.Contains(got, "\n\n") {
+		t.Errorf("agentCommand(claude, extra) base prompt and extra context should be separated by blank line, got %q", got)
+	}
+}
+
+func TestResolveClaudeContext(t *testing.T) {
+	cases := []struct {
+		configVal string
+		flagVal   string
+		want      string
+	}{
+		{"", "", ""},
+		{"from config", "", "from config"},
+		{"", "from flag", "from flag"},
+		{"from config", "from flag", "from config\n\nfrom flag"},
+	}
+	for _, tt := range cases {
+		got := resolveClaudeContext(tt.configVal, tt.flagVal)
+		if got != tt.want {
+			t.Errorf("resolveClaudeContext(%q, %q) = %q, want %q", tt.configVal, tt.flagVal, got, tt.want)
 		}
 	}
 }
 
 func TestAgentCommand_Unknown(t *testing.T) {
 	// Unknown names pass through unchanged
-	if got := agentCommand("mytool"); got != "mytool" {
+	if got := agentCommand("mytool", ""); got != "mytool" {
 		t.Errorf("agentCommand(unknown) = %q, want %q", got, "mytool")
 	}
 }
@@ -189,7 +233,8 @@ func TestChooseEnabledAgent_MultipleAgents_EOF(t *testing.T) {
 }
 
 func TestAgentCommand_ClaudeCodeAlias(t *testing.T) {
-	if got := agentCommand("claude_code"); got != "claude" {
-		t.Errorf("agentCommand(claude_code) = %q, want %q", got, "claude")
+	got := agentCommand("claude_code", "")
+	if !strings.HasPrefix(got, "claude --append-system-prompt ") {
+		t.Errorf("agentCommand(claude_code) should start with 'claude --append-system-prompt', got %q", got)
 	}
 }

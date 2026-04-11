@@ -24,10 +24,11 @@ type GlobalConfig struct {
 	UseZellij            *bool                 `yaml:"use_zellij"`
 	ZellijTheme          string                `yaml:"zellij_theme"`
 	FileBrowser          string                `yaml:"file_browser"`
-	ZellijPlugins        []ZellijPlugin        `yaml:"zellij_plugins"`
-	AgentFrameworks      AgentFrameworksConfig `yaml:"agent_frameworks"`
-	ContainerEnvVars     map[string]string     `yaml:"container_env_vars"`
-	PortMappings         []string              `yaml:"port_mappings"`
+	ZellijPlugins             []ZellijPlugin        `yaml:"zellij_plugins"`
+	AgentFrameworks           AgentFrameworksConfig `yaml:"agent_frameworks"`
+	ContainerEnvVars          map[string]string     `yaml:"container_env_vars"`
+	PortMappings              []string              `yaml:"port_mappings"`
+	ClaudeAppendSystemPrompt  string                `yaml:"claude_append_system_prompt"`
 }
 
 // applyEnvOverrides applies AGENTJAIL_* environment variable overrides to the
@@ -305,6 +306,9 @@ func runConfigUpdateFromPath(configPath string) error {
 	if !topKeys["port_mappings"] {
 		addKV("port_mappings", &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}, "port_mappings: []")
 	}
+	if !topKeys["claude_append_system_prompt"] {
+		addKV("claude_append_system_prompt", scalar("!!str", ""), "claude_append_system_prompt: \"\"")
+	}
 
 	// agent_frameworks: add the whole block if missing, or fill in missing sub-frameworks.
 	frameworks := []struct {
@@ -457,6 +461,12 @@ zellij_plugins: []
 
 # Anthropic API key for Claude Code (optional; falls back to ANTHROPIC_API_KEY env var)
 anthropic_api_key: ""
+
+# Extra text appended to Claude Code's system prompt on every launch.
+# Use this to tell Claude about project conventions, team standards, or anything
+# else that should always be in context. Combined with --claude-context if that
+# flag is also provided.
+claude_append_system_prompt: ""
 
 # Agent framework settings
 agent_frameworks:

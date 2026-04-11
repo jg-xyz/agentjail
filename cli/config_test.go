@@ -455,3 +455,44 @@ default_shell: zsh
 		t.Error("InjectGhAuthToken: expected false (default)")
 	}
 }
+
+func TestLoadGlobalConfigFromPath_ClaudeAppendSystemPrompt(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := `
+default_editor: micro
+default_shell: zsh
+claude_append_system_prompt: "Always write tests before code."
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadGlobalConfigFromPath(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ClaudeAppendSystemPrompt != "Always write tests before code." {
+		t.Errorf("ClaudeAppendSystemPrompt: got %q, want %q",
+			cfg.ClaudeAppendSystemPrompt, "Always write tests before code.")
+	}
+}
+
+func TestPrintCleanConfig_DocumentsClaudeAppendSystemPrompt(t *testing.T) {
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	printCleanConfig()
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("claude_append_system_prompt")) {
+		t.Error("printCleanConfig output missing claude_append_system_prompt key")
+	}
+}
