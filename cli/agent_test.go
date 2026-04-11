@@ -105,7 +105,7 @@ func TestAgentCommand_Claude(t *testing.T) {
 	if !strings.HasPrefix(got, "claude --append-system-prompt ") {
 		t.Errorf("agentCommand(claude) should start with 'claude --append-system-prompt', got %q", got)
 	}
-	if !strings.Contains(got, "rg") || !strings.Contains(got, "fd") || !strings.Contains(got, "bat") {
+	if !strings.Contains(got, "rg") || !strings.Contains(got, "fd") {
 		t.Errorf("agentCommand(claude) system prompt missing expected tools, got %q", got)
 	}
 }

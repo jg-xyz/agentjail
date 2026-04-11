@@ -735,7 +735,11 @@ func main() {
 			}
 		}
 
-		runArgs = append(runArgs, "claude")
+		niPrompt := claudeSystemPrompt
+		if claudeExtraContext != "" {
+			niPrompt += "\n\n" + claudeExtraContext
+		}
+		runArgs = append(runArgs, "claude", "--append-system-prompt", niPrompt)
 		runArgs = append(runArgs, flag.Args()...)
 	} else if globalConfig.ZellijEnabled() {
 		if *autoStartPtr {
