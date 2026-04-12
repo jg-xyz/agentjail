@@ -357,8 +357,18 @@ func main() {
 	}
 
 	// Copy template configs to .agentjail
-	if err := copyTemplateConfigs(agentJailDir, globalConfig); err != nil {
+	profilePrompt, err := copyTemplateConfigs(agentJailDir, globalConfig)
+	if err != nil {
 		log.Warnf("could not copy template configs: %v", err)
+	}
+	// Profile CLAUDE.md content is prepended so it acts as a base that the
+	// user's own claude_append_system_prompt and --claude-context can extend.
+	if profilePrompt != "" {
+		if claudeExtraContext != "" {
+			claudeExtraContext = profilePrompt + "\n\n" + claudeExtraContext
+		} else {
+			claudeExtraContext = profilePrompt
+		}
 	}
 
 	// Resolve the preferred agent and write zellij files (only when zellij is enabled).

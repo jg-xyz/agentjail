@@ -70,12 +70,13 @@ func updateGitignore(baseDir string) error {
 	return nil
 }
 
-// copyTemplateConfigs copies tool-specific configs from templates to .agentjail
-func copyTemplateConfigs(agentJailDir string, config *GlobalConfig) error {
+// copyTemplateConfigs copies tool-specific configs from templates to .agentjail.
+// Returns the profile system prompt addition (empty string when no profile is configured).
+func copyTemplateConfigs(agentJailDir string, config *GlobalConfig) (string, error) {
 	// Always copy rovr
 	rovrDir := filepath.Join(agentJailDir, "rovr")
 	if err := os.MkdirAll(rovrDir, 0755); err != nil {
-		return err
+		return "", err
 	}
 
 	for _, file := range []string{"config.toml", "pins.json"} {
@@ -84,7 +85,7 @@ func copyTemplateConfigs(agentJailDir string, config *GlobalConfig) error {
 			continue // Might not exist
 		}
 		if err := os.WriteFile(filepath.Join(rovrDir, file), content, 0644); err != nil {
-			return err
+			return "", err
 		}
 	}
 
@@ -92,12 +93,12 @@ func copyTemplateConfigs(agentJailDir string, config *GlobalConfig) error {
 	if config.AgentFrameworks.OpenCode.Enabled {
 		opencodeDir := filepath.Join(agentJailDir, "opencode")
 		if err := os.MkdirAll(opencodeDir, 0755); err != nil {
-			return err
+			return "", err
 		}
 		content, err := templatesFS.ReadFile("templates/configs/opencode/opencode.json")
 		if err == nil {
 			if err := os.WriteFile(filepath.Join(opencodeDir, "opencode.json"), content, 0644); err != nil {
-				return err
+				return "", err
 			}
 		}
 	}
@@ -106,7 +107,7 @@ func copyTemplateConfigs(agentJailDir string, config *GlobalConfig) error {
 	if config.AgentFrameworks.Copilot.Enabled {
 		copilotDir := filepath.Join(agentJailDir, "copilot")
 		if err := os.MkdirAll(copilotDir, 0755); err != nil {
-			return err
+			return "", err
 		}
 		for _, file := range []string{"config.json", "mcp.json"} {
 			content, err := templatesFS.ReadFile("templates/configs/copilot/" + file)
@@ -114,7 +115,7 @@ func copyTemplateConfigs(agentJailDir string, config *GlobalConfig) error {
 				continue
 			}
 			if err := os.WriteFile(filepath.Join(copilotDir, file), content, 0644); err != nil {
-				return err
+				return "", err
 			}
 		}
 	}
@@ -124,23 +125,60 @@ func copyTemplateConfigs(agentJailDir string, config *GlobalConfig) error {
 	if config.AgentFrameworks.ClaudeCode.Enabled {
 		claudeDir := filepath.Join(agentJailDir, "claude")
 		if err := os.MkdirAll(claudeDir, 0755); err != nil {
-			return err
+			return "", err
 		}
 		settingsPath := filepath.Join(claudeDir, "settings.local.json")
 		data, err := generateClaudeSettingsJSON(config.AgentFrameworks.ClaudeCode)
 		if err != nil {
-			return fmt.Errorf("generating claude plugin settings: %w", err)
+			return "", fmt.Errorf("generating claude plugin settings: %w", err)
 		}
 		if data != nil {
 			if err := os.WriteFile(settingsPath, data, 0644); err != nil {
-				return err
+				return "", err
 			}
 			log.Infof("wrote claude plugin settings to %s", settingsPath)
 		} else {
 			// Remove any stale file left from a previous config that had plugins.
 			_ = os.Remove(settingsPath)
 		}
+
+		// Fetch and write profile files (rules, agents) when a profile is configured.
+		if config.AgentFrameworks.ClaudeCode.Profile != nil {
+			files, err := fetchProfile(config.AgentFrameworks.ClaudeCode.Profile, config.GithubToken)
+			if err != nil {
+				return "", fmt.Errorf("fetching claude profile: %w", err)
+			}
+			profilePrompt := strings.TrimSpace(files.SystemPrompt)
+
+			for _, sub := range []struct {
+				name string
+				src  map[string]string
+			}{
+				{"rules", files.Rules},
+				{"agents", files.Agents},
+			} {
+				subDir := filepath.Join(claudeDir, "profile", sub.name)
+				if err := os.MkdirAll(subDir, 0755); err != nil {
+					return "", err
+				}
+				// Remove stale files from a previous profile before writing new ones.
+				existing, _ := os.ReadDir(subDir)
+				for _, e := range existing {
+					_ = os.Remove(filepath.Join(subDir, e.Name()))
+				}
+				for name, content := range sub.src {
+					if err := os.WriteFile(filepath.Join(subDir, name), []byte(content), 0644); err != nil {
+						return "", err
+					}
+				}
+			}
+			log.Infof("wrote claude profile files (%d rules, %d agents)", len(files.Rules), len(files.Agents))
+			return profilePrompt, nil
+		}
+
+		// Remove any stale profile files from a previous config.
+		_ = os.RemoveAll(filepath.Join(claudeDir, "profile"))
 	}
 
-	return nil
+	return "", nil
 }
