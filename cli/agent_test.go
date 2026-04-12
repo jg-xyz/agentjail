@@ -238,3 +238,17 @@ func TestAgentCommand_ClaudeCodeAlias(t *testing.T) {
 		t.Errorf("agentCommand(claude_code) should start with 'claude --append-system-prompt', got %q", got)
 	}
 }
+func TestResolveClaudeContext_AllThreeSources(t *testing.T) {
+	// Simulates profile prompt prepended in main.go, then config+flag via resolveClaudeContext.
+	profilePrompt := "profile rules"
+	configVal := "team conventions"
+	flagVal := "session note"
+
+	extra := resolveClaudeContext(configVal, flagVal)
+	result := profilePrompt + "\n\n" + extra
+
+	want := "profile rules\n\nteam conventions\n\nsession note"
+	if result != want {
+		t.Errorf("got %q, want %q", result, want)
+	}
+}

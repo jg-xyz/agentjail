@@ -161,6 +161,11 @@ agent_frameworks:
     mcp_servers: []
     # Hooks that fire on Claude Code tool events (see "Hooks" section).
     hooks: []
+    # Optional profile: CLAUDE.md + rules/ + agents/ from GitHub or local disk.
+    # See "Claude profiles" section below.
+    # profile:
+    #   repo: drona23/claude-token-efficient
+    #   path: profiles/K-drona23-v6
 
 # Environment variables injected into the container via docker run -e.
 # See "Forwarding environment variables" below.
@@ -350,6 +355,40 @@ agent_frameworks:
 ```
 
 Multiple hooks with the same `event` and `matcher` are merged into a single hook group. The generated config is regenerated on every `agentjail` launch, so changes to `mcp_servers` or `hooks` take effect immediately without a rebuild.
+
+### Claude profiles
+
+A profile is a directory containing three optional components that Claude Code reads at startup:
+
+| File/dir | Purpose |
+|----------|---------|
+| `CLAUDE.md` | Instructions prepended to Claude's system prompt |
+| `rules/*.md` | Persistent rules mounted into `.claude/rules/` |
+| `agents/*.md` | Subagent definitions mounted into `.claude/agents/` |
+
+Profiles can come from a GitHub repo or a local path:
+
+```yaml
+agent_frameworks:
+  claude:
+    enabled: true
+    profile:
+      repo: drona23/claude-token-efficient  # GitHub owner/repo
+      path: profiles/K-drona23-v6           # path within that repo
+```
+
+```yaml
+    profile:
+      path: ~/my-claude-profiles/coding     # local path (absolute or ~/...)
+```
+
+AgentJail fetches the profile on every launch (keeping it current), writes the files to `.agentjail/claude/profile/`, and:
+
+- Prepends `CLAUDE.md` content to the system prompt (before `claude_append_system_prompt` and `--claude-context`)
+- Mounts each `rules/*.md` file into the container at `/project/.claude/rules/agentjail-<name>.md`
+- Mounts each `agents/*.md` file into the container at `/project/.claude/agents/agentjail-<name>.md`
+
+Files are mounted individually with an `agentjail-` prefix so they sit alongside — rather than replacing — any rules or agents already in the project's `.claude/` directory.
 
 ### VS Code integration (Claude Code extension)
 

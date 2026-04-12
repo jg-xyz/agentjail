@@ -357,8 +357,18 @@ func main() {
 	}
 
 	// Copy template configs to .agentjail
-	if err := copyTemplateConfigs(agentJailDir, globalConfig); err != nil {
+	profilePrompt, err := copyTemplateConfigs(agentJailDir, globalConfig)
+	if err != nil {
 		log.Warnf("could not copy template configs: %v", err)
+	}
+	// Profile CLAUDE.md content is prepended so it acts as a base that the
+	// user's own claude_append_system_prompt and --claude-context can extend.
+	if profilePrompt != "" {
+		if claudeExtraContext != "" {
+			claudeExtraContext = profilePrompt + "\n\n" + claudeExtraContext
+		} else {
+			claudeExtraContext = profilePrompt
+		}
 	}
 
 	// Resolve the preferred agent and write zellij files (only when zellij is enabled).
@@ -518,6 +528,34 @@ func main() {
 			runArgs = append(runArgs, "-v", mount)
 			volumes = append(volumes, mount)
 			log.Info("mounting claude plugin settings as /project/.claude/settings.local.json")
+		}
+
+		// Mount profile rules and agent files into the container's .claude/ directory.
+		// Files are mounted individually (not as a directory) so they don't shadow
+		// project-level .claude/rules/ or .claude/agents/ files.
+		// Each file gets an "agentjail-" prefix to avoid collisions with project files.
+		for _, sub := range []struct {
+			localDir     string
+			containerDir string
+		}{
+			{filepath.Join(agentJailDir, "claude", "profile", "rules"), "/project/.claude/rules"},
+			{filepath.Join(agentJailDir, "claude", "profile", "agents"), "/project/.claude/agents"},
+		} {
+			entries, readErr := os.ReadDir(sub.localDir)
+			if readErr != nil {
+				continue // directory absent = no profile files for this subdir
+			}
+			for _, e := range entries {
+				if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+					continue
+				}
+				hostPath := filepath.Join(sub.localDir, e.Name())
+				containerPath := sub.containerDir + "/agentjail-" + e.Name()
+				mount := fmt.Sprintf("%s:%s:ro", hostPath, containerPath)
+				runArgs = append(runArgs, "-v", mount)
+				volumes = append(volumes, mount)
+				log.Infof("mounting profile file: %s → %s", hostPath, containerPath)
+			}
 		}
 
 		// Inject ANTHROPIC_API_KEY: config field takes priority, then host env var.

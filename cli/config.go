@@ -109,12 +109,20 @@ type ClaudeHook struct {
 	Command string `yaml:"command"` // shell command to run
 }
 
+// ClaudeProfile specifies an optional profile directory (GitHub repo or local path)
+// containing CLAUDE.md, rules/*.md, and agents/*.md files to load into the container.
+type ClaudeProfile struct {
+	Repo string `yaml:"repo,omitempty"` // GitHub "owner/repo"; empty means local path
+	Path string `yaml:"path"`           // path within repo, or absolute/~/... local path
+}
+
 // ClaudeFrameworkConfig holds Claude Code-specific framework settings including
 // structured plugin types (MCP servers, hooks).
 type ClaudeFrameworkConfig struct {
-	Enabled    bool         `yaml:"enabled"`
-	MCPServers []MCPServer  `yaml:"mcp_servers,omitempty"`
-	Hooks      []ClaudeHook `yaml:"hooks,omitempty"`
+	Enabled    bool           `yaml:"enabled"`
+	MCPServers []MCPServer    `yaml:"mcp_servers,omitempty"`
+	Hooks      []ClaudeHook   `yaml:"hooks,omitempty"`
+	Profile    *ClaudeProfile `yaml:"profile,omitempty"`
 }
 
 func getGlobalConfigPath() (string, error) {
@@ -575,6 +583,16 @@ agent_frameworks:
     #   - event: PreToolUse
     #     matcher: "Bash"
     #     command: "echo 'bash called' >> /tmp/hooks.log"
+    # Profile: a directory of CLAUDE.md, rules/*.md, and agents/*.md files.
+    # CLAUDE.md content is prepended to the system prompt; rules and agents
+    # are mounted into the container at /project/.claude/rules/ and /project/.claude/agents/.
+    # GitHub repo (fetched at launch):
+    # profile:
+    #   repo: drona23/claude-token-efficient
+    #   path: profiles/K-drona23-v6
+    # Local path (absolute or ~/...):
+    # profile:
+    #   path: ~/my-claude-profiles/coding
 
 # Environment variables to inject into the container.
 # Supports two schemas:

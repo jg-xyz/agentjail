@@ -221,7 +221,22 @@ agent_frameworks:
   # ------------------------------------------------------------
   claude:
     enabled: false             # true | false  (requires --build to take effect)
-    plugins: []                # reserved for future use
+    mcp_servers: []            # MCP servers to register with Claude Code
+    #   - name: context7
+    #     command: npx
+    #     args: ["-y", "@upstash/context7-mcp"]
+    #     env: {}              # optional env vars for the server process
+    #     type: stdio          # stdio (default) | sse
+    hooks: []                  # shell commands fired on Claude Code tool events
+    #   - event: PreToolUse    # PreToolUse | PostToolUse | Notification | Stop
+    #     matcher: "Bash"      # glob pattern for tool name; empty = match all
+    #     command: "echo 'called' >> /tmp/hooks.log"
+    # profile:                 # optional directory of CLAUDE.md + rules/ + agents/
+    #   repo: drona23/claude-token-efficient  # GitHub owner/repo (fetched at launch)
+    #   path: profiles/K-drona23-v6           # path within repo
+    # --- OR local path ---
+    # profile:
+    #   path: ~/my-claude-profiles/coding     # absolute or ~/... local path
 
 
 # ============================================================
