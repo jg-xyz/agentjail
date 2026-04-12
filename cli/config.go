@@ -583,6 +583,16 @@ agent_frameworks:
     #   - event: PreToolUse
     #     matcher: "Bash"
     #     command: "echo 'bash called' >> /tmp/hooks.log"
+    # Profile: a directory of CLAUDE.md, rules/*.md, and agents/*.md files.
+    # CLAUDE.md content is prepended to the system prompt; rules and agents
+    # are mounted into the container at /project/.claude/rules/ and /project/.claude/agents/.
+    # GitHub repo (fetched at launch):
+    # profile:
+    #   repo: drona23/claude-token-efficient
+    #   path: profiles/K-drona23-v6
+    # Local path (absolute or ~/...):
+    # profile:
+    #   path: ~/my-claude-profiles/coding
 
 # Environment variables to inject into the container.
 # Supports two schemas:
