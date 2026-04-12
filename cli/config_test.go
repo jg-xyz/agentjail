@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestLoadGlobalConfigFromPath_Valid(t *testing.T) {
@@ -638,5 +640,38 @@ func TestPrintCleanConfig_DocumentsClaudePlugins(t *testing.T) {
 		if !bytes.Contains([]byte(output), []byte(key)) {
 			t.Errorf("printCleanConfig output missing %q (Claude plugin docs)", key)
 		}
+	}
+}
+
+func TestClaudeFrameworkConfig_ProfileYAML(t *testing.T) {
+	input := `
+enabled: true
+profile:
+  repo: drona23/claude-token-efficient
+  path: profiles/K-drona23-v6
+`
+	var cfg ClaudeFrameworkConfig
+	if err := yaml.Unmarshal([]byte(input), &cfg); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if cfg.Profile == nil {
+		t.Fatal("expected Profile to be non-nil")
+	}
+	if cfg.Profile.Repo != "drona23/claude-token-efficient" {
+		t.Errorf("Repo: got %q, want %q", cfg.Profile.Repo, "drona23/claude-token-efficient")
+	}
+	if cfg.Profile.Path != "profiles/K-drona23-v6" {
+		t.Errorf("Path: got %q, want %q", cfg.Profile.Path, "profiles/K-drona23-v6")
+	}
+}
+
+func TestClaudeFrameworkConfig_NoProfileYAML(t *testing.T) {
+	input := `enabled: true`
+	var cfg ClaudeFrameworkConfig
+	if err := yaml.Unmarshal([]byte(input), &cfg); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if cfg.Profile != nil {
+		t.Errorf("expected Profile to be nil when absent, got: %+v", cfg.Profile)
 	}
 }
