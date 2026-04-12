@@ -85,12 +85,44 @@ type AgentFrameworksConfig struct {
 	// ClaudeCode was previously keyed as "claude_code" in YAML. It was renamed
 	// to "claude" to match the binary name. Users with claude_code: in their
 	// config should rename the key to claude:.
-	ClaudeCode FrameworkConfig `yaml:"claude"`
+	ClaudeCode ClaudeFrameworkConfig `yaml:"claude"`
 }
 
 type FrameworkConfig struct {
 	Enabled bool     `yaml:"enabled"`
 	Plugins []string `yaml:"plugins"`
+}
+
+// MCPServer defines a Model Context Protocol server to register with Claude Code.
+type MCPServer struct {
+	Name    string            `yaml:"name"`
+	Command string            `yaml:"command"`
+	Args    []string          `yaml:"args,omitempty"`
+	Env     map[string]string `yaml:"env,omitempty"`
+	Type    string            `yaml:"type,omitempty"` // "stdio" (default) or "sse"
+}
+
+// ClaudeHook defines a hook that fires on a Claude Code tool event.
+type ClaudeHook struct {
+	Event   string `yaml:"event"`   // PreToolUse | PostToolUse | Notification | Stop
+	Matcher string `yaml:"matcher"` // glob pattern for tool name (empty = match all)
+	Command string `yaml:"command"` // shell command to run
+}
+
+// ClaudeProfile specifies an optional profile directory (GitHub repo or local path)
+// containing CLAUDE.md, rules/*.md, and agents/*.md files to load into the container.
+type ClaudeProfile struct {
+	Repo string `yaml:"repo,omitempty"` // GitHub "owner/repo"; empty means local path
+	Path string `yaml:"path"`           // path within repo, or absolute/~/... local path
+}
+
+// ClaudeFrameworkConfig holds Claude Code-specific framework settings including
+// structured plugin types (MCP servers, hooks).
+type ClaudeFrameworkConfig struct {
+	Enabled    bool           `yaml:"enabled"`
+	MCPServers []MCPServer    `yaml:"mcp_servers,omitempty"`
+	Hooks      []ClaudeHook   `yaml:"hooks,omitempty"`
+	Profile    *ClaudeProfile `yaml:"profile,omitempty"`
 }
 
 func getGlobalConfigPath() (string, error) {
@@ -311,17 +343,20 @@ func runConfigUpdateFromPath(configPath string) error {
 	}
 
 	// agent_frameworks: add the whole block if missing, or fill in missing sub-frameworks.
-	frameworks := []struct {
+	// "claude" uses ClaudeFrameworkConfig (mcp_servers/hooks); others use FrameworkConfig (plugins).
+	genericFrameworks := []struct {
 		name    string
 		enabled bool
-	}{{"opencode", false}, {"copilot", true}, {"claude", false}}
+	}{{"opencode", false}, {"copilot", true}}
 
 	if !topKeys["agent_frameworks"] {
 		afNode := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-		for _, fw := range frameworks {
+		for _, fw := range genericFrameworks {
 			afNode.Content = append(afNode.Content, frameworkNodes(fw.name, fw.enabled)...)
 			added = append(added, fmt.Sprintf("agent_frameworks.%s.enabled: %v", fw.name, fw.enabled))
 		}
+		afNode.Content = append(afNode.Content, claudeFrameworkNodes(false)...)
+		added = append(added, "agent_frameworks.claude.enabled: false")
 		root.Content = append(root.Content, scalar("!!str", "agent_frameworks"), afNode)
 	} else {
 		// Find the agent_frameworks value node.
@@ -337,10 +372,44 @@ func runConfigUpdateFromPath(configPath string) error {
 			for i := 0; i < len(afVal.Content)-1; i += 2 {
 				afKeys[afVal.Content[i].Value] = true
 			}
-			for _, fw := range frameworks {
+			for _, fw := range genericFrameworks {
 				if !afKeys[fw.name] {
 					afVal.Content = append(afVal.Content, frameworkNodes(fw.name, fw.enabled)...)
 					added = append(added, fmt.Sprintf("agent_frameworks.%s.enabled: %v", fw.name, fw.enabled))
+				}
+			}
+			if !afKeys["claude"] {
+				afVal.Content = append(afVal.Content, claudeFrameworkNodes(false)...)
+				added = append(added, "agent_frameworks.claude.enabled: false")
+			} else {
+				// claude exists — ensure mcp_servers and hooks are present.
+				// This migrates configs that still use the old plugins: [] shape.
+				var claudeVal *yaml.Node
+				for i := 0; i < len(afVal.Content)-1; i += 2 {
+					if afVal.Content[i].Value == "claude" {
+						claudeVal = afVal.Content[i+1]
+						break
+					}
+				}
+				if claudeVal != nil && claudeVal.Kind == yaml.MappingNode {
+					claudeKeys := make(map[string]bool, len(claudeVal.Content)/2)
+					for i := 0; i < len(claudeVal.Content)-1; i += 2 {
+						claudeKeys[claudeVal.Content[i].Value] = true
+					}
+					if !claudeKeys["mcp_servers"] {
+						claudeVal.Content = append(claudeVal.Content,
+							&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "mcp_servers"},
+							&yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"},
+						)
+						added = append(added, "agent_frameworks.claude.mcp_servers: []")
+					}
+					if !claudeKeys["hooks"] {
+						claudeVal.Content = append(claudeVal.Content,
+							&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "hooks"},
+							&yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"},
+						)
+						added = append(added, "agent_frameworks.claude.hooks: []")
+					}
 				}
 			}
 		}
@@ -387,7 +456,7 @@ func runConfigUpdateFromPath(configPath string) error {
 	return nil
 }
 
-// frameworkNodes returns the key+value yaml.Node pair for an agent framework entry.
+// frameworkNodes returns the key+value yaml.Node pair for a generic agent framework entry.
 func frameworkNodes(name string, enabled bool) []*yaml.Node {
 	enabledStr := "false"
 	if enabled {
@@ -399,6 +468,26 @@ func frameworkNodes(name string, enabled bool) []*yaml.Node {
 			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "enabled"},
 			{Kind: yaml.ScalarNode, Tag: "!!bool", Value: enabledStr},
 			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "plugins"},
+			{Kind: yaml.SequenceNode, Tag: "!!seq"},
+		}},
+	}
+}
+
+// claudeFrameworkNodes returns the key+value yaml.Node pair for the claude framework entry,
+// which uses ClaudeFrameworkConfig (mcp_servers/hooks) instead of the generic plugins list.
+func claudeFrameworkNodes(enabled bool) []*yaml.Node {
+	enabledStr := "false"
+	if enabled {
+		enabledStr = "true"
+	}
+	return []*yaml.Node{
+		{Kind: yaml.ScalarNode, Tag: "!!str", Value: "claude"},
+		{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "enabled"},
+			{Kind: yaml.ScalarNode, Tag: "!!bool", Value: enabledStr},
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "mcp_servers"},
+			{Kind: yaml.SequenceNode, Tag: "!!seq"},
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "hooks"},
 			{Kind: yaml.SequenceNode, Tag: "!!seq"},
 		}},
 	}
@@ -478,7 +567,32 @@ agent_frameworks:
     plugins: []
   claude:
     enabled: false
-    plugins: []
+    # MCP (Model Context Protocol) servers to register with Claude Code.
+    # Each server is an external process Claude can call as a tool.
+    mcp_servers: []
+    #   - name: context7              # unique server name shown in /mcp
+    #     command: npx                # executable to run
+    #     args: ["-y", "@upstash/context7-mcp"]
+    #     env:                        # optional environment variables for the server
+    #       DEFAULT_MINIMUM_TOKENS: "10000"
+    #     type: stdio                 # "stdio" (default) or "sse"
+    # Hooks: shell commands that fire on Claude Code tool events.
+    # event: PreToolUse | PostToolUse | Notification | Stop
+    # matcher: glob pattern for the tool name (empty = match all tools)
+    hooks: []
+    #   - event: PreToolUse
+    #     matcher: "Bash"
+    #     command: "echo 'bash called' >> /tmp/hooks.log"
+    # Profile: a directory of CLAUDE.md, rules/*.md, and agents/*.md files.
+    # CLAUDE.md content is prepended to the system prompt; rules and agents
+    # are mounted into the container at /project/.claude/rules/ and /project/.claude/agents/.
+    # GitHub repo (fetched at launch):
+    # profile:
+    #   repo: drona23/claude-token-efficient
+    #   path: profiles/K-drona23-v6
+    # Local path (absolute or ~/...):
+    # profile:
+    #   path: ~/my-claude-profiles/coding
 
 # Environment variables to inject into the container.
 # Supports two schemas:

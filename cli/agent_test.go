@@ -59,7 +59,7 @@ func TestEnabledAgents_BothEnabled(t *testing.T) {
 func TestEnabledAgents_ClaudeCodeOnly(t *testing.T) {
 	cfg := &GlobalConfig{
 		AgentFrameworks: AgentFrameworksConfig{
-			ClaudeCode: FrameworkConfig{Enabled: true},
+			ClaudeCode: ClaudeFrameworkConfig{Enabled: true},
 		},
 	}
 	agents := enabledAgents(cfg)
@@ -73,7 +73,7 @@ func TestEnabledAgents_AllThreeEnabled(t *testing.T) {
 		AgentFrameworks: AgentFrameworksConfig{
 			Copilot:    FrameworkConfig{Enabled: true},
 			OpenCode:   FrameworkConfig{Enabled: true},
-			ClaudeCode: FrameworkConfig{Enabled: true},
+			ClaudeCode: ClaudeFrameworkConfig{Enabled: true},
 		},
 	}
 	agents := enabledAgents(cfg)
@@ -236,5 +236,19 @@ func TestAgentCommand_ClaudeCodeAlias(t *testing.T) {
 	got := agentCommand("claude_code", "")
 	if !strings.HasPrefix(got, "claude --append-system-prompt ") {
 		t.Errorf("agentCommand(claude_code) should start with 'claude --append-system-prompt', got %q", got)
+	}
+}
+func TestResolveClaudeContext_AllThreeSources(t *testing.T) {
+	// Simulates profile prompt prepended in main.go, then config+flag via resolveClaudeContext.
+	profilePrompt := "profile rules"
+	configVal := "team conventions"
+	flagVal := "session note"
+
+	extra := resolveClaudeContext(configVal, flagVal)
+	result := profilePrompt + "\n\n" + extra
+
+	want := "profile rules\n\nteam conventions\n\nsession note"
+	if result != want {
+		t.Errorf("got %q, want %q", result, want)
 	}
 }
