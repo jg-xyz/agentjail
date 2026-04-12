@@ -530,6 +530,34 @@ func main() {
 			log.Info("mounting claude plugin settings as /project/.claude/settings.local.json")
 		}
 
+		// Mount profile rules and agent files into the container's .claude/ directory.
+		// Files are mounted individually (not as a directory) so they don't shadow
+		// project-level .claude/rules/ or .claude/agents/ files.
+		// Each file gets an "agentjail-" prefix to avoid collisions with project files.
+		for _, sub := range []struct {
+			localDir     string
+			containerDir string
+		}{
+			{filepath.Join(agentJailDir, "claude", "profile", "rules"), "/project/.claude/rules"},
+			{filepath.Join(agentJailDir, "claude", "profile", "agents"), "/project/.claude/agents"},
+		} {
+			entries, readErr := os.ReadDir(sub.localDir)
+			if readErr != nil {
+				continue // directory absent = no profile files for this subdir
+			}
+			for _, e := range entries {
+				if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+					continue
+				}
+				hostPath := filepath.Join(sub.localDir, e.Name())
+				containerPath := sub.containerDir + "/agentjail-" + e.Name()
+				mount := fmt.Sprintf("%s:%s:ro", hostPath, containerPath)
+				runArgs = append(runArgs, "-v", mount)
+				volumes = append(volumes, mount)
+				log.Infof("mounting profile file: %s → %s", hostPath, containerPath)
+			}
+		}
+
 		// Inject ANTHROPIC_API_KEY: config field takes priority, then host env var.
 		// Skip if already configured via container_env_vars (user config takes precedence).
 		if _, alreadyConfigured := globalConfig.ContainerEnvVars["ANTHROPIC_API_KEY"]; !alreadyConfigured {
