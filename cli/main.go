@@ -509,6 +509,17 @@ func main() {
 			}
 		}
 
+		// Mount generated plugin settings (MCP servers, hooks) as the highest-priority
+		// project settings layer. The file is written by copyTemplateConfigs; if no
+		// plugins are configured the file won't exist and we skip the mount.
+		claudeSettingsPath := filepath.Join(agentJailDir, "claude", "settings.local.json")
+		if _, statErr := os.Stat(claudeSettingsPath); statErr == nil {
+			mount := fmt.Sprintf("%s:/project/.claude/settings.local.json", claudeSettingsPath)
+			runArgs = append(runArgs, "-v", mount)
+			volumes = append(volumes, mount)
+			log.Info("mounting claude plugin settings as /project/.claude/settings.local.json")
+		}
+
 		// Inject ANTHROPIC_API_KEY: config field takes priority, then host env var.
 		// Skip if already configured via container_env_vars (user config takes precedence).
 		if _, alreadyConfigured := globalConfig.ContainerEnvVars["ANTHROPIC_API_KEY"]; !alreadyConfigured {

@@ -59,7 +59,8 @@ agent_frameworks:
     plugins: []
   claude:
     enabled: false
-    plugins: []
+    mcp_servers: []
+    hooks: []
 `)
 	before, _ := os.ReadFile(path)
 	if err := runConfigUpdateFromPath(path); err != nil {
@@ -115,6 +116,25 @@ default_shell: bash
 	}
 	if cfg["file_browser"] != "rovr" {
 		t.Errorf("file_browser: got %v, want rovr", cfg["file_browser"])
+	}
+
+	// The freshly-created claude entry must have the new shape, not the old plugins key.
+	af, ok := cfg["agent_frameworks"].(map[string]interface{})
+	if !ok {
+		t.Fatal("agent_frameworks is not a map")
+	}
+	claude, ok := af["claude"].(map[string]interface{})
+	if !ok {
+		t.Fatal("agent_frameworks.claude is missing or not a map")
+	}
+	if _, ok := claude["mcp_servers"]; !ok {
+		t.Error("expected agent_frameworks.claude.mcp_servers")
+	}
+	if _, ok := claude["hooks"]; !ok {
+		t.Error("expected agent_frameworks.claude.hooks")
+	}
+	if _, ok := claude["plugins"]; ok {
+		t.Error("agent_frameworks.claude should not have a plugins key")
 	}
 }
 
@@ -197,8 +217,15 @@ agent_frameworks:
 	if !ok {
 		t.Fatal("agent_frameworks is not a map")
 	}
-	if _, ok := af["claude"]; !ok {
-		t.Error("expected agent_frameworks.claude to be added")
+	claude, ok := af["claude"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected agent_frameworks.claude to be added")
+	}
+	if _, ok := claude["mcp_servers"]; !ok {
+		t.Error("expected agent_frameworks.claude.mcp_servers to be present")
+	}
+	if _, ok := claude["hooks"]; !ok {
+		t.Error("expected agent_frameworks.claude.hooks to be present")
 	}
 	// Existing sub-keys must still be present.
 	if _, ok := af["opencode"]; !ok {
@@ -266,7 +293,8 @@ zellij_theme: catppuccin-mocha
 agent_frameworks:
   claude:
     enabled: true
-    plugins: []
+    mcp_servers: []
+    hooks: []
 `)
 	if err := runConfigUpdateFromPath(path); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -289,5 +317,115 @@ agent_frameworks:
 	claude := af["claude"].(map[string]interface{})
 	if claude["enabled"] != true {
 		t.Errorf("agent_frameworks.claude.enabled overwritten: got %v", claude["enabled"])
+	}
+}
+
+func TestRunConfigUpdateFromPath_MigratesOldClaudePluginsShape(t *testing.T) {
+	// Configs with the old `plugins: []` under claude should have mcp_servers and
+	// hooks added by update-config, without removing the (now-ignored) plugins key.
+	path := writeConfig(t, `default_editor: micro
+default_shell: zsh
+mount_system_gitconfig: true
+mount_gh_config_dir: true
+use_zellij: true
+zellij_theme: tokyo-night-storm
+file_browser: rovr
+zellij_plugins: []
+inject_gh_auth_token: false
+preferred_agent: ""
+github_token: ""
+anthropic_api_key: ""
+container_env_vars: {}
+port_mappings: []
+claude_append_system_prompt: ""
+agent_frameworks:
+  opencode:
+    enabled: false
+    plugins: []
+  copilot:
+    enabled: true
+    plugins: []
+  claude:
+    enabled: false
+    plugins: []
+`)
+	if err := runConfigUpdateFromPath(path); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	cfg := readConfig(t, path)
+	af := cfg["agent_frameworks"].(map[string]interface{})
+	claude := af["claude"].(map[string]interface{})
+
+	if _, ok := claude["mcp_servers"]; !ok {
+		t.Error("expected mcp_servers to be added to claude")
+	}
+	if _, ok := claude["hooks"]; !ok {
+		t.Error("expected hooks to be added to claude")
+	}
+	// enabled must be preserved.
+	if claude["enabled"] != false {
+		t.Errorf("claude.enabled was changed: got %v", claude["enabled"])
+	}
+
+	// A backup must have been created (because the file changed).
+	entries, _ := os.ReadDir(filepath.Dir(path))
+	var backups int
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".bkup.") {
+			backups++
+		}
+	}
+	if backups != 1 {
+		t.Errorf("expected 1 backup after migration, got %d", backups)
+	}
+}
+
+func TestRunConfigUpdateFromPath_ClaudeNewShapeAlreadyUpToDate(t *testing.T) {
+	// A config already using mcp_servers/hooks should not be modified.
+	path := writeConfig(t, `default_editor: micro
+default_shell: zsh
+mount_system_gitconfig: true
+mount_gh_config_dir: true
+use_zellij: true
+zellij_theme: tokyo-night-storm
+file_browser: rovr
+zellij_plugins: []
+inject_gh_auth_token: false
+preferred_agent: ""
+github_token: ""
+anthropic_api_key: ""
+container_env_vars: {}
+port_mappings: []
+claude_append_system_prompt: ""
+agent_frameworks:
+  opencode:
+    enabled: false
+    plugins: []
+  copilot:
+    enabled: true
+    plugins: []
+  claude:
+    enabled: false
+    mcp_servers: []
+    hooks: []
+`)
+	before, _ := os.ReadFile(path)
+
+	if err := runConfigUpdateFromPath(path); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	after, _ := os.ReadFile(path)
+	if string(before) != string(after) {
+		t.Errorf("file was modified when it should already be up to date")
+	}
+
+	// No backup should be created.
+	entries, _ := os.ReadDir(filepath.Dir(path))
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".bkup.") {
+			t.Errorf("unexpected backup created: %s", e.Name())
+		}
 	}
 }

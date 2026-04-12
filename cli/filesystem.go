@@ -119,5 +119,28 @@ func copyTemplateConfigs(agentJailDir string, config *GlobalConfig) error {
 		}
 	}
 
+	// Generate Claude Code plugin settings if enabled.
+	// Always regenerates so config changes take effect on the next launch.
+	if config.AgentFrameworks.ClaudeCode.Enabled {
+		claudeDir := filepath.Join(agentJailDir, "claude")
+		if err := os.MkdirAll(claudeDir, 0755); err != nil {
+			return err
+		}
+		settingsPath := filepath.Join(claudeDir, "settings.local.json")
+		data, err := generateClaudeSettingsJSON(config.AgentFrameworks.ClaudeCode)
+		if err != nil {
+			return fmt.Errorf("generating claude plugin settings: %w", err)
+		}
+		if data != nil {
+			if err := os.WriteFile(settingsPath, data, 0644); err != nil {
+				return err
+			}
+			log.Infof("wrote claude plugin settings to %s", settingsPath)
+		} else {
+			// Remove any stale file left from a previous config that had plugins.
+			_ = os.Remove(settingsPath)
+		}
+	}
+
 	return nil
 }

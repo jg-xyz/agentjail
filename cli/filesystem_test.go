@@ -338,11 +338,11 @@ func TestUpdateGitignore_ExistingFileWithoutTrailingNewline(t *testing.T) {
 	}
 }
 
-func TestCopyTemplateConfigs_ClaudeCode(t *testing.T) {
+func TestCopyTemplateConfigs_ClaudeCode_NoPlugins(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &GlobalConfig{
 		AgentFrameworks: AgentFrameworksConfig{
-			ClaudeCode: FrameworkConfig{Enabled: true},
+			ClaudeCode: ClaudeFrameworkConfig{Enabled: true},
 		},
 	}
 
@@ -357,9 +357,122 @@ func TestCopyTemplateConfigs_ClaudeCode(t *testing.T) {
 		}
 	}
 
-	// ClaudeCode has no template configs of its own; no claude/ dir should appear.
+	// With no plugins configured, settings.local.json should NOT be written.
+	settingsPath := filepath.Join(dir, "claude", "settings.local.json")
+	if _, err := os.Stat(settingsPath); err == nil {
+		t.Error("settings.local.json should not be created when no plugins are configured")
+	}
+}
+
+func TestCopyTemplateConfigs_Claude_WritesSettingsLocalJSON(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &GlobalConfig{
+		AgentFrameworks: AgentFrameworksConfig{
+			ClaudeCode: ClaudeFrameworkConfig{
+				Enabled: true,
+				MCPServers: []MCPServer{
+					{Name: "test-server", Command: "npx", Args: []string{"-y", "test-pkg"}},
+				},
+			},
+		},
+	}
+
+	if err := copyTemplateConfigs(dir, cfg); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	settingsPath := filepath.Join(dir, "claude", "settings.local.json")
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("settings.local.json was not created: %v", err)
+	}
+	if !strings.Contains(string(data), "test-server") {
+		t.Errorf("settings.local.json does not contain MCP server name; got: %s", data)
+	}
+}
+
+func TestCopyTemplateConfigs_Claude_AlwaysRegenerates(t *testing.T) {
+	dir := t.TempDir()
+
+	// First call: one MCP server.
+	cfg := &GlobalConfig{
+		AgentFrameworks: AgentFrameworksConfig{
+			ClaudeCode: ClaudeFrameworkConfig{
+				Enabled:    true,
+				MCPServers: []MCPServer{{Name: "old-server", Command: "cmd"}},
+			},
+		},
+	}
+	if err := copyTemplateConfigs(dir, cfg); err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+
+	// Second call: different MCP server.
+	cfg.AgentFrameworks.ClaudeCode.MCPServers = []MCPServer{{Name: "new-server", Command: "cmd2"}}
+	if err := copyTemplateConfigs(dir, cfg); err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+
+	settingsPath := filepath.Join(dir, "claude", "settings.local.json")
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("settings.local.json missing: %v", err)
+	}
+	content := string(data)
+	if strings.Contains(content, "old-server") {
+		t.Error("stale server name 'old-server' found; file was not regenerated")
+	}
+	if !strings.Contains(content, "new-server") {
+		t.Errorf("expected 'new-server' in regenerated file; got: %s", content)
+	}
+}
+
+func TestCopyTemplateConfigs_Claude_RemovesStaleFileWhenPluginsCleared(t *testing.T) {
+	dir := t.TempDir()
+
+	// First call: write a settings file.
+	cfg := &GlobalConfig{
+		AgentFrameworks: AgentFrameworksConfig{
+			ClaudeCode: ClaudeFrameworkConfig{
+				Enabled:    true,
+				MCPServers: []MCPServer{{Name: "srv", Command: "cmd"}},
+			},
+		},
+	}
+	if err := copyTemplateConfigs(dir, cfg); err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+
+	settingsPath := filepath.Join(dir, "claude", "settings.local.json")
+	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
+		t.Fatal("settings.local.json should exist after first call")
+	}
+
+	// Second call: plugins removed.
+	cfg.AgentFrameworks.ClaudeCode.MCPServers = nil
+	if err := copyTemplateConfigs(dir, cfg); err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+
+	if _, err := os.Stat(settingsPath); err == nil {
+		t.Error("settings.local.json should be removed when no plugins are configured")
+	}
+}
+
+func TestCopyTemplateConfigs_Claude_DisabledSkipsDir(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &GlobalConfig{
+		AgentFrameworks: AgentFrameworksConfig{
+			ClaudeCode: ClaudeFrameworkConfig{Enabled: false},
+		},
+	}
+
+	if err := copyTemplateConfigs(dir, cfg); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
 	if _, err := os.Stat(filepath.Join(dir, "claude")); err == nil {
-		t.Error("unexpected claude/ directory created for ClaudeCode framework")
+		t.Error("claude/ directory should not be created when Claude is disabled")
 	}
 }
 

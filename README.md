@@ -1,5 +1,5 @@
 # [AGENTJAIL]
-a cli for containerized agentic environments
+a cli for containerized agentic dev environments
 
 AgentJail launches AI coding agents (GitHub Copilot, OpenCode, Claude Code) inside isolated Docker containers. Your project directory is mounted into the container, and a persistent `.agentjail/` folder keeps shell history, tool configs, and credentials across sessions.
 
@@ -157,6 +157,10 @@ agent_frameworks:
     enabled: false
   claude:
     enabled: false
+    # MCP servers to register with Claude Code (see "MCP servers" section).
+    mcp_servers: []
+    # Hooks that fire on Claude Code tool events (see "Hooks" section).
+    hooks: []
 
 # Environment variables injected into the container via docker run -e.
 # See "Forwarding environment variables" below.
@@ -307,6 +311,46 @@ After enabling any agent, rebuild the image:
 agentjail -b
 ```
 
+#### MCP servers
+
+MCP (Model Context Protocol) servers extend Claude with additional tools. Configure them under `claude` in the config; AgentJail generates a `settings.local.json` and mounts it into the container as `/project/.claude/settings.local.json`, which Claude Code merges at the highest priority without overriding your global `~/.claude/settings.json`.
+
+```yaml
+agent_frameworks:
+  claude:
+    enabled: true
+    mcp_servers:
+      - name: context7             # displayed in Claude's /mcp list
+        command: npx
+        args: ["-y", "@upstash/context7-mcp"]
+        env:                       # optional env vars for the server process
+          DEFAULT_MINIMUM_TOKENS: "10000"
+      - name: filesystem
+        command: npx
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "/project"]
+        type: stdio                # "stdio" (default) or "sse"
+```
+
+Each server is keyed by `name`. Duplicate names are rejected at launch time.
+
+#### Hooks
+
+Hooks run shell commands in response to Claude Code tool events. Useful for logging, auditing, or enforcing policies on tool use.
+
+```yaml
+agent_frameworks:
+  claude:
+    enabled: true
+    hooks:
+      - event: PreToolUse          # PreToolUse | PostToolUse | Notification | Stop
+        matcher: "Bash"            # glob pattern for the tool name; empty = match all
+        command: "echo 'bash called' >> /tmp/hooks.log"
+      - event: PostToolUse
+        command: "notify-send 'Claude finished a tool'"
+```
+
+Multiple hooks with the same `event` and `matcher` are merged into a single hook group. The generated config is regenerated on every `agentjail` launch, so changes to `mcp_servers` or `hooks` take effect immediately without a rebuild.
+
 ### VS Code integration (Claude Code extension)
 
 The Claude Code VS Code extension supports a `claudeCode.claudeProcessWrapper` setting that wraps the `claude` process. You can point it at AgentJail so every Claude Code session inside VS Code runs inside an isolated container.
@@ -324,7 +368,7 @@ The `-N` flag enables non-interactive mode (no TTY, stdin/stdout passed through 
 1. If an AgentJail container is already running for the project (from an interactive session), VS Code's claude process runs inside it via `docker exec` — fast, no container startup overhead.
 2. If no container is running, AgentJail starts a fresh ephemeral container (`--rm`) and runs claude directly inside it. To coordinate concurrent `-N` starts (e.g. VS Code opening two sessions simultaneously), the first process uses a fixed-name container (`agentjail-ni.<prefix>`) so the second can exec into it instead of starting a duplicate.
 
-The agent `claude` must be enabled in your config and the image must be built:
+The agent `claude` must be enabled in your config and the image must be built (this ensures the built image already has Claude built in, instead of downloading at launch time. To enable this, enable Claude in your agentjail config and rebuild the image with `agentjail --build-no-cache`):
 
 ```yaml
 agent_frameworks:
@@ -359,3 +403,5 @@ agentjail -P
 Ubuntu 24.04 with: `gh`, `git`, `micro`, `vim`, `nano`, `zsh`, `bash`, `node` (via mise), `python3`, `uv`, `pip`, `aws-cli`, `ripgrep`, `fd`, `fzf`, `eza`, `yq`, `television`, `zellij`, `rovr`, `rich-cli`, starship prompt. Optional file browsers: `yazi`, `nnn`, `spf` (install via `file_browser` config + rebuild).
 
 Shell aliases: `files` → file browser, `edit` → configured editor, `/exit` → exit.
+
+Claude specific aliases: `claude-yolo` → launches claude with `--dangerously-skip-permissions` flag to skip permissions prompts.

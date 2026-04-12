@@ -59,7 +59,7 @@ func TestEnabledAgents_BothEnabled(t *testing.T) {
 func TestEnabledAgents_ClaudeCodeOnly(t *testing.T) {
 	cfg := &GlobalConfig{
 		AgentFrameworks: AgentFrameworksConfig{
-			ClaudeCode: FrameworkConfig{Enabled: true},
+			ClaudeCode: ClaudeFrameworkConfig{Enabled: true},
 		},
 	}
 	agents := enabledAgents(cfg)
@@ -73,7 +73,7 @@ func TestEnabledAgents_AllThreeEnabled(t *testing.T) {
 		AgentFrameworks: AgentFrameworksConfig{
 			Copilot:    FrameworkConfig{Enabled: true},
 			OpenCode:   FrameworkConfig{Enabled: true},
-			ClaudeCode: FrameworkConfig{Enabled: true},
+			ClaudeCode: ClaudeFrameworkConfig{Enabled: true},
 		},
 	}
 	agents := enabledAgents(cfg)

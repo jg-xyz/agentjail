@@ -496,3 +496,147 @@ func TestPrintCleanConfig_DocumentsClaudeAppendSystemPrompt(t *testing.T) {
 		t.Error("printCleanConfig output missing claude_append_system_prompt key")
 	}
 }
+
+func TestLoadGlobalConfigFromPath_ClaudeMCPServers(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := `
+agent_frameworks:
+  claude:
+    enabled: true
+    mcp_servers:
+      - name: context7
+        command: npx
+        args: ["-y", "@upstash/context7-mcp"]
+        env:
+          DEFAULT_MINIMUM_TOKENS: "10000"
+      - name: filesystem
+        command: npx
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "/project"]
+        type: stdio
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := loadGlobalConfigFromPath(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.AgentFrameworks.ClaudeCode.Enabled {
+		t.Error("ClaudeCode.Enabled: expected true")
+	}
+	servers := cfg.AgentFrameworks.ClaudeCode.MCPServers
+	if len(servers) != 2 {
+		t.Fatalf("expected 2 MCP servers, got %d", len(servers))
+	}
+	if servers[0].Name != "context7" {
+		t.Errorf("servers[0].Name: got %q, want %q", servers[0].Name, "context7")
+	}
+	if servers[0].Command != "npx" {
+		t.Errorf("servers[0].Command: got %q", servers[0].Command)
+	}
+	if servers[0].Env["DEFAULT_MINIMUM_TOKENS"] != "10000" {
+		t.Errorf("servers[0].Env: got %v", servers[0].Env)
+	}
+	if servers[1].Name != "filesystem" {
+		t.Errorf("servers[1].Name: got %q", servers[1].Name)
+	}
+	if servers[1].Type != "stdio" {
+		t.Errorf("servers[1].Type: got %q, want %q", servers[1].Type, "stdio")
+	}
+}
+
+func TestLoadGlobalConfigFromPath_ClaudeHooks(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := `
+agent_frameworks:
+  claude:
+    enabled: true
+    hooks:
+      - event: PreToolUse
+        matcher: "Bash"
+        command: "echo pre"
+      - event: PostToolUse
+        command: "echo post"
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := loadGlobalConfigFromPath(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	hooks := cfg.AgentFrameworks.ClaudeCode.Hooks
+	if len(hooks) != 2 {
+		t.Fatalf("expected 2 hooks, got %d", len(hooks))
+	}
+	if hooks[0].Event != "PreToolUse" {
+		t.Errorf("hooks[0].Event: got %q", hooks[0].Event)
+	}
+	if hooks[0].Matcher != "Bash" {
+		t.Errorf("hooks[0].Matcher: got %q", hooks[0].Matcher)
+	}
+	if hooks[1].Event != "PostToolUse" {
+		t.Errorf("hooks[1].Event: got %q", hooks[1].Event)
+	}
+	if hooks[1].Matcher != "" {
+		t.Errorf("hooks[1].Matcher: expected empty, got %q", hooks[1].Matcher)
+	}
+}
+
+func TestLoadGlobalConfigFromPath_ClaudeOldPluginsFieldIgnored(t *testing.T) {
+	// Old configs with plugins: [...] under claude: should load without error,
+	// and MCPServers/Hooks should be empty (the old field is silently ignored).
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := `
+agent_frameworks:
+  claude:
+    enabled: true
+    plugins:
+      - some-old-plugin
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := loadGlobalConfigFromPath(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.AgentFrameworks.ClaudeCode.Enabled {
+		t.Error("ClaudeCode.Enabled: expected true")
+	}
+	if len(cfg.AgentFrameworks.ClaudeCode.MCPServers) != 0 {
+		t.Errorf("expected no MCPServers, got %v", cfg.AgentFrameworks.ClaudeCode.MCPServers)
+	}
+	if len(cfg.AgentFrameworks.ClaudeCode.Hooks) != 0 {
+		t.Errorf("expected no Hooks, got %v", cfg.AgentFrameworks.ClaudeCode.Hooks)
+	}
+}
+
+func TestPrintCleanConfig_DocumentsClaudePlugins(t *testing.T) {
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	printCleanConfig()
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+	output := buf.String()
+	for _, key := range []string{"mcp_servers", "hooks"} {
+		if !bytes.Contains([]byte(output), []byte(key)) {
+			t.Errorf("printCleanConfig output missing %q (Claude plugin docs)", key)
+		}
+	}
+}
