@@ -12,7 +12,7 @@ This milestone makes the Claude Code integration first-class by solving three in
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Mount & Copy** - Mount `~/.claude` read-only at `/tmp/.claude` and copy it into the container with host-path translation on startup
+- [x] **Phase 1: Mount & Copy** - Mount `~/.claude` read-only at `/tmp/.claude` and copy it into the container with host-path translation on startup
 - [ ] **Phase 2: Write-back Sync** - Sync `/root/.claude` back to the host on container exit with reverse path translation and safe ownership handling
 - [ ] **Phase 3: Session Naming** - Auto-name Claude Code sessions `<project-folder>_<git-branch>` by detecting the branch at container start
 
@@ -27,10 +27,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. At container start, `/root/.claude` is populated as a writable copy of `/tmp/.claude`
   3. Paths inside copied text files reference `/root/...` instead of the host home dir
   4. Binary files (`.wasm`, `.png`, `.jpg`, etc.) are copied as-is without attempted text substitution
-**Plans:** 1 plan
+**Plans:** 2 plans
 
 Plans:
 - [x] 01-01-PLAN.md -- Read-only mount, copy-on-start with path translation, binary skip, Dockerfile init script
+- [x] 01-02-PLAN.md -- Gap closure: buildNIClaudeArgs wires dockerSetup into non-interactive branch (MOUNT-02)
 
 ### Phase 2: Write-back Sync
 **Goal**: Changes made to Claude config inside the container (memories, settings edits, new skills) are preserved on the host after the session ends
@@ -59,6 +60,6 @@ Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Mount & Copy | 1/1 | Complete | 2026-04-25 |
+| 1. Mount & Copy | 2/2 | Complete | 2026-04-26 |
 | 2. Write-back Sync | 0/TBD | Not started | - |
 | 3. Session Naming | 0/TBD | Not started | - |
