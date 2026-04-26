@@ -36,16 +36,16 @@ _Milestone 1 — v1_
 
 ## Traceability
 
-| Requirement | Phase |
-|-------------|-------|
-| MOUNT-01 | Phase 1 |
-| MOUNT-02 | Phase 1 |
-| MOUNT-03 | Phase 1 |
-| SYNC-01 | Phase 2 |
-| SYNC-02 | Phase 2 |
-| SYNC-03 | Phase 2 |
-| SESSION-01 | Phase 3 |
-| SESSION-02 | Phase 3 |
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| MOUNT-01 | Phase 1 | Pending |
+| MOUNT-02 | Phase 1 | Pending |
+| MOUNT-03 | Phase 1 | Pending |
+| SYNC-01 | Phase 2 | Pending |
+| SYNC-02 | Phase 2 | Pending |
+| SYNC-03 | Phase 2 | Pending |
+| SESSION-01 | Phase 3 | Pending |
+| SESSION-02 | Phase 3 | Pending |
 
 ---
-*Last updated: 2026-04-25 after initialization*
+*Last updated: 2026-04-25 after roadmap creation*
