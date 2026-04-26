@@ -13,6 +13,31 @@ import (
 	"golang.org/x/term"
 )
 
+// buildClaudeMountArgs returns the volume args, env args, and dockerSetup
+// snippet for mounting ~/.claude into the container with path translation.
+// hostClaudePath is the absolute path to ~/.claude on the host.
+// hostHome is the host user's home directory (e.g. "/home/jg").
+func buildClaudeMountArgs(hostClaudePath, hostHome string) (volumeArgs []string, envArgs []string, setupSnippet string) {
+	// Volume: read-only at /tmp/.claude
+	claudeTmpMount := fmt.Sprintf("%s:/tmp/.claude:ro", hostClaudePath)
+	volumeArgs = []string{"-v", claudeTmpMount}
+
+	// Env: HOST_HOME for sed substitution
+	envArgs = []string{"-e", fmt.Sprintf("HOST_HOME=%s", hostHome)}
+
+	// dockerSetup: copy + path translate, skip binaries via grep -qI
+	setupSnippet = `if [ -d /tmp/.claude ] && [ ! -d /root/.claude ]; then ` +
+		`cp -r /tmp/.claude /root/.claude && ` +
+		`find /root/.claude -type f | while IFS= read -r f; do ` +
+		`if grep -qI "" "$f" 2>/dev/null; then ` +
+		`sed -i "s|${HOST_HOME}/.claude|/root/.claude|g" "$f" 2>/dev/null || true; ` +
+		`fi; ` +
+		`done; ` +
+		`fi; `
+
+	return
+}
+
 // runWithTerminalRestore runs cmd and restores the terminal state and console
 // code pages (on Windows) after it exits, regardless of success or failure.
 func runWithTerminalRestore(cmd *exec.Cmd) error {
