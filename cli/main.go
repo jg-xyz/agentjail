@@ -521,10 +521,16 @@ func main() {
 		} else {
 			hostClaudePath := filepath.Join(usr.HomeDir, ".claude")
 			if _, err := os.Stat(hostClaudePath); err == nil {
-				claudeMount := fmt.Sprintf("%s:/root/.claude", hostClaudePath)
-				runArgs = append(runArgs, "-v", claudeMount)
-				volumes = append(volumes, claudeMount)
-				log.Info("mounting host ~/.claude for Claude Code auth")
+				volArgs, envArgs, _ := buildClaudeMountArgs(hostClaudePath, usr.HomeDir)
+				runArgs = append(runArgs, volArgs...)
+				runArgs = append(runArgs, envArgs...)
+				// Track volume for metadata
+				for _, a := range volArgs {
+					if a != "-v" {
+						volumes = append(volumes, a)
+					}
+				}
+				log.Info("mounting host ~/.claude read-only at /tmp/.claude for Claude Code")
 			}
 			hostClaudeJSON := filepath.Join(usr.HomeDir, ".claude.json")
 			if _, err := os.Stat(hostClaudeJSON); err == nil {
@@ -699,6 +705,10 @@ func main() {
 		// Copy the read-only /tmp mount to the user's home so git operations
 		// inside the container use the host identity without modifying the host file.
 		dockerSetup += `[ -f /tmp/.gitconfig ] && cp /tmp/.gitconfig ~/.gitconfig 2>/dev/null; `
+	}
+	if globalConfig.AgentFrameworks.ClaudeCode.Enabled {
+		_, _, claudeSetup := buildClaudeMountArgs("", "")
+		dockerSetup += claudeSetup
 	}
 
 	var niLockFile *os.File // held when we win the NI lock; released on exit/error
