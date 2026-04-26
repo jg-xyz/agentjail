@@ -384,6 +384,26 @@ esac
 INSTALL_BROWSER
 RUN chmod +x /usr/local/bin/agentjail-install-browser
 
+# Startup script: copies /tmp/.claude (read-only host mount) to /root/.claude
+# with host-path substitution so hooks and plugins resolve inside the container.
+# Runs from CMD so it executes at container creation for ALL paths including
+# non-interactive mode (which bypasses the dockerSetup shell string).
+# Idempotent: skips if /root/.claude already exists (e.g. from dockerSetup).
+RUN cat > /usr/local/bin/agentjail-init-claude <<'INIT_CLAUDE'
+#!/bin/sh
+# Copy /tmp/.claude to /root/.claude with host-path substitution.
+# HOST_HOME is injected by the agentjail CLI at runtime.
+if [ -d /tmp/.claude ] && [ ! -d /root/.claude ]; then
+  cp -r /tmp/.claude /root/.claude
+  find /root/.claude -type f | while IFS= read -r f; do
+    if grep -qI "" "$f" 2>/dev/null; then
+      sed -i "s|${HOST_HOME}/.claude|/root/.claude|g" "$f" 2>/dev/null || true
+    fi
+  done
+fi
+INIT_CLAUDE
+RUN chmod +x /usr/local/bin/agentjail-init-claude
+
 # Configure the ubuntu user to use /root as home so it inherits all dotfiles,
 # tool configs, and volume mounts (which all target /root/...).
 # Give it passwordless sudo so exit-hook chown operations work.
@@ -401,4 +421,4 @@ WORKDIR /project
 RUN [ ! -f /project/mise.toml ] && touch /project/mise.toml
 
 # Default command
-CMD /usr/local/bin/agentjail-install-browser || true && mise trust --yes && mise install || rich "No mise file detected" --print --style 'dark_goldenrod' && ${SHELL} && cd /project
+CMD /usr/local/bin/agentjail-init-claude; /usr/local/bin/agentjail-install-browser || true && mise trust --yes && mise install || rich "No mise file detected" --print --style 'dark_goldenrod' && ${SHELL} && cd /project
