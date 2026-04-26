@@ -341,21 +341,24 @@ volumes = append(volumes, claudeMount)
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Non-interactive mode and the copy snippet**
    - What we know: The `-N` path appends `claude` directly to `runArgs` and bypasses the `sh -c` wrapper; `dockerSetup` is not applied.
    - What's unclear: Should non-interactive mode also have the claude copy? (It launches Claude Code directly, so yes — it needs `/root/.claude` to exist.)
    - Recommendation: Add a dedicated startup script `/usr/local/bin/agentjail-init-claude` baked into the Dockerfile (invoked via the `CMD` line or called explicitly in the non-interactive path), OR inject the copy command directly into the non-interactive `runArgs` as a pre-command. The simpler fix is to embed it in the Dockerfile `CMD` so it runs unconditionally.
+   - **RESOLVED:** Plan Task 3 adds `agentjail-init-claude` script to Dockerfile CMD. Both interactive and non-interactive paths call CMD before the main process, so the copy runs unconditionally.
 
 2. **`~/.claude.json` — does it need path substitution?**
    - What we know: The existing code also mounts `~/.claude.json` directly at `/root/.claude.json` (lines 504-509). This file stores auth tokens; it is unlikely to contain absolute paths.
    - What's unclear: Whether `.claude.json` references home-dir paths.
    - Recommendation: Inspect the file structure; if it only contains auth state (tokens, user IDs), leave the direct mount as-is. This is out of scope for Phase 1 based on requirements.
+   - **RESOLVED (out of scope):** `.claude.json` contains only auth tokens/user IDs. No path substitution needed. Direct mount unchanged. Explicitly accepted as out of scope for Phase 1.
 
 3. **`/root/.claude` already exists in image?**
    - What we know: The Dockerfile does not pre-create `/root/.claude`. The copy guard `[ ! -d /root/.claude ]` is safe.
    - Recommendation: Keep the guard to make the startup idempotent (no harm if someone runs a manual `docker exec` that re-sources the shell).
+   - **RESOLVED:** Plan uses `[ -d /tmp/.claude ] && [ ! -d /root/.claude ]` guard. Idempotent — safe for all attach scenarios.
 
 ---
 
