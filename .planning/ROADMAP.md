@@ -30,7 +30,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 1 plan
 
 Plans:
-- [ ] 01-01-PLAN.md -- Read-only mount, copy-on-start with path translation, binary skip, Dockerfile init script
+- [x] 01-01-PLAN.md -- Read-only mount, copy-on-start with path translation, binary skip, Dockerfile init script
 
 ### Phase 2: Write-back Sync
 **Goal**: Changes made to Claude config inside the container (memories, settings edits, new skills) are preserved on the host after the session ends
@@ -59,6 +59,6 @@ Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Mount & Copy | 0/1 | Not started | - |
+| 1. Mount & Copy | 1/1 | Complete | 2026-04-25 |
 | 2. Write-back Sync | 0/TBD | Not started | - |
 | 3. Session Naming | 0/TBD | Not started | - |
