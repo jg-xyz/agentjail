@@ -782,8 +782,7 @@ func main() {
 		if claudeExtraContext != "" {
 			niPrompt += "\n\n" + claudeExtraContext
 		}
-		runArgs = append(runArgs, "claude", "--append-system-prompt", niPrompt)
-		runArgs = append(runArgs, flag.Args()...)
+		runArgs = append(runArgs, buildNIClaudeArgs(dockerSetup, niPrompt, flag.Args())...)
 	} else if globalConfig.ZellijEnabled() {
 		if *autoStartPtr {
 			log.Info("-A flag is no longer needed; the preferred agent launches automatically in the first zellij tab")

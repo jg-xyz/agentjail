@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -143,4 +144,53 @@ func TestTryNILock_StaleLock(t *testing.T) {
 		t.Fatal("expected stale lock to be removed and new lock acquired")
 	}
 	releaseNILock(f)
+}
+
+func TestBuildNIClaudeArgs_NoDockerSetup(t *testing.T) {
+	got := buildNIClaudeArgs("", "myprompt", nil)
+	want := []string{"claude", "--append-system-prompt", "myprompt"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestBuildNIClaudeArgs_NoDockerSetup_WithExtraArgs(t *testing.T) {
+	got := buildNIClaudeArgs("", "myprompt", []string{"--debug"})
+	want := []string{"claude", "--append-system-prompt", "myprompt", "--debug"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestBuildNIClaudeArgs_WithDockerSetup(t *testing.T) {
+	setup := "cp -r /tmp/.claude /root/.claude; "
+	got := buildNIClaudeArgs(setup, "myprompt", nil)
+	if len(got) < 5 {
+		t.Fatalf("expected at least 5 args, got %v", got)
+	}
+	if got[0] != "-e" {
+		t.Errorf("first arg should be -e, got %q", got[0])
+	}
+	if got[1] != "_AGENTJAIL_SYS=myprompt" {
+		t.Errorf("second arg should be _AGENTJAIL_SYS=myprompt, got %q", got[1])
+	}
+	if got[2] != "sh" || got[3] != "-c" {
+		t.Errorf("expected sh -c, got %v", got[2:4])
+	}
+	script := got[4]
+	if !strings.Contains(script, setup) {
+		t.Errorf("script missing dockerSetup, got %q", script)
+	}
+	if !strings.Contains(script, `exec claude --append-system-prompt "$_AGENTJAIL_SYS"`) {
+		t.Errorf("script missing exec claude invocation, got %q", script)
+	}
+}
+
+func TestBuildNIClaudeArgs_WithDockerSetup_WithExtraArgs(t *testing.T) {
+	setup := "cp -r /tmp/.claude /root/.claude; "
+	got := buildNIClaudeArgs(setup, "myprompt", []string{"--model", "opus"})
+	script := got[len(got)-1]
+	if !strings.Contains(script, "--model opus") {
+		t.Errorf("script missing extra args, got %q", script)
+	}
 }

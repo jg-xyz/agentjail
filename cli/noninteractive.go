@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -75,6 +76,24 @@ func releaseNILock(f *os.File) {
 	path := f.Name()
 	f.Close()
 	os.Remove(path)
+}
+
+// buildNIClaudeArgs returns the args to append after the image name in a
+// non-interactive docker run command. When dockerSetup is non-empty it wraps
+// the claude invocation in sh -c so that the setup script (e.g. copy of
+// /tmp/.claude to /root/.claude) runs before claude starts. The prompt is
+// passed via an env-var argument to avoid shell quoting hazards.
+func buildNIClaudeArgs(dockerSetup, niPrompt string, extraArgs []string) []string {
+	if dockerSetup == "" {
+		args := []string{"claude", "--append-system-prompt", niPrompt}
+		return append(args, extraArgs...)
+	}
+	extra := ""
+	if len(extraArgs) > 0 {
+		extra = " " + strings.Join(extraArgs, " ")
+	}
+	script := dockerSetup + `exec claude --append-system-prompt "$_AGENTJAIL_SYS"` + extra
+	return []string{"-e", "_AGENTJAIL_SYS=" + niPrompt, "sh", "-c", script}
 }
 
 // niContainerName returns the non-interactive container name for a given prefix.
