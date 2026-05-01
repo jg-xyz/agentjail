@@ -104,4 +104,4 @@ PROMPT2="$(/usr/local/bin/starship prompt --continuation)"
 # On container exit, sync /root/.claude back to host ~/.claude.
 # EXIT trap fires on normal exit, Ctrl-C (SIGINT), and docker stop (SIGTERM).
 # Uses EXIT only (no INT/TERM traps) to avoid zsh trap interaction issues.
-trap 'agentjail-sync-claude' EXIT
+trap '[ -z "${ZELLIJ}" ] && agentjail-sync-claude' EXIT
