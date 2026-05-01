@@ -100,3 +100,8 @@ setopt promptsubst
 PROMPT='$('/usr/local/bin/starship' prompt --terminal-width="$COLUMNS" --keymap="${KEYMAP:-}" --status="${STARSHIP_CMD_STATUS:-}" --pipestatus="${STARSHIP_PIPE_STATUS[*]:-}" --cmd-duration="${STARSHIP_DURATION:-}" --jobs="$STARSHIP_JOBS_COUNT")'
 RPROMPT='$('/usr/local/bin/starship' prompt --right --terminal-width="$COLUMNS" --keymap="${KEYMAP:-}" --status="${STARSHIP_CMD_STATUS:-}" --pipestatus="${STARSHIP_PIPE_STATUS[*]:-}" --cmd-duration="${STARSHIP_DURATION:-}" --jobs="$STARSHIP_JOBS_COUNT")'
 PROMPT2="$(/usr/local/bin/starship prompt --continuation)"
+
+# On container exit, sync /root/.claude back to host ~/.claude.
+# EXIT trap fires on normal exit, Ctrl-C (SIGINT), and docker stop (SIGTERM).
+# Uses EXIT only (no INT/TERM traps) to avoid zsh trap interaction issues.
+trap 'agentjail-sync-claude' EXIT
