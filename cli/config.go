@@ -157,7 +157,7 @@ func saveGlobalConfig(config *GlobalConfig) error {
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
 		return err
 	}
 
@@ -166,7 +166,7 @@ func saveGlobalConfig(config *GlobalConfig) error {
 		return err
 	}
 
-	return os.WriteFile(configPath, data, 0644)
+	return os.WriteFile(configPath, data, 0600)
 }
 
 // loadGlobalConfigFromPath loads a GlobalConfig from a specific file path.
@@ -210,14 +210,14 @@ func runConfigUpdateFromPath(configPath string) error {
 				Copilot: FrameworkConfig{Enabled: true},
 			},
 		}
-		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
 			return err
 		}
 		data, err := yaml.Marshal(config)
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(configPath, data, 0644); err != nil {
+		if err := os.WriteFile(configPath, data, 0600); err != nil {
 			return err
 		}
 		log.Infof("created %s", configPath)
