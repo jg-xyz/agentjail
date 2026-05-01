@@ -218,10 +218,28 @@ agent_frameworks:
   #     persistence. Also injects ANTHROPIC_API_KEY if set.
   #     Values: true | false
   #     Default: false
+  #
+  #   sync_mode
+  #     On container exit, sync /root/.claude back to host ~/.claude.
+  #     Change detection is content-based (mtime is not used).
+  #
+  #     additions_only (default)
+  #       New and modified files are synced. Files deleted inside
+  #       the container are NOT removed from the host.
+  #
+  #     full
+  #       New, modified, and deleted files are synced. Files
+  #       deleted inside the container are removed from the host.
+  #
+  #     To skip sync for a session: set AGENTJAIL_NO_SYNC=1 or
+  #     touch /root/.agentjail/nosync inside the container.
+  #
+  #     Default: additions_only
   # ------------------------------------------------------------
   claude:
     enabled: false             # true | false  (requires --build to take effect)
     plugins: []                # reserved for future use
+    sync_mode: additions_only  # additions_only | full
 
 
 # ============================================================
