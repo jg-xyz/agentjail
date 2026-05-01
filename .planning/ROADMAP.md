@@ -41,7 +41,11 @@ Plans:
   1. On container exit, `/root/.claude` is synced back to host `~/.claude` with `/root` translated back to the host home dir
   2. Synced files on the host are owned by the host user (correct `HOST_UID`/`HOST_GID`), not root
   3. Files that were not modified inside the container are not overwritten on the host
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 02-01-PLAN.md -- Go CLI: /tmp/.claude-out:rw mount, SYNC_MODE env var injection, SyncMode config field, unit tests
+- [ ] 02-02-PLAN.md -- Container: agentjail-sync-claude script, zsh EXIT trap, config_schema.yaml docs
 
 ### Phase 3: Session Naming
 **Goal**: Claude Code sessions are named after the project and current git branch so the user can identify them immediately
@@ -61,5 +65,5 @@ Phases execute in numeric order: 1 -> 2 -> 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Mount & Copy | 2/2 | Complete | 2026-04-26 |
-| 2. Write-back Sync | 0/TBD | Not started | - |
+| 2. Write-back Sync | 0/2 | Not started | - |
 | 3. Session Naming | 0/TBD | Not started | - |
