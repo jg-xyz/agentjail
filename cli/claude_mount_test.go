@@ -74,3 +74,46 @@ func TestDockerSetupBinarySkip(t *testing.T) {
 		t.Errorf("expected grep -qI binary detection in snippet, got %q", snippet)
 	}
 }
+
+func TestClaudeOutMountReadWrite(t *testing.T) {
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	os.MkdirAll(claudeDir, 0755)
+
+	volArgs, _, _ := buildClaudeMountArgs(claudeDir, dir)
+
+	found := false
+	for _, arg := range volArgs {
+		if strings.HasSuffix(arg, "/tmp/.claude-out:rw") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected /tmp/.claude-out:rw mount in volArgs, got %v", volArgs)
+	}
+}
+
+func TestClaudeMountBothReadAndWrite(t *testing.T) {
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	os.MkdirAll(claudeDir, 0755)
+
+	volArgs, _, _ := buildClaudeMountArgs(claudeDir, dir)
+
+	hasRO := false
+	hasRW := false
+	for _, arg := range volArgs {
+		if strings.HasSuffix(arg, "/tmp/.claude:ro") {
+			hasRO = true
+		}
+		if strings.HasSuffix(arg, "/tmp/.claude-out:rw") {
+			hasRW = true
+		}
+	}
+	if !hasRO {
+		t.Errorf("expected /tmp/.claude:ro mount in volArgs, got %v", volArgs)
+	}
+	if !hasRW {
+		t.Errorf("expected /tmp/.claude-out:rw mount in volArgs, got %v", volArgs)
+	}
+}
