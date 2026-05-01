@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestClaudeMountReadOnly(t *testing.T) {
+func TestClaudeMountReadWrite(t *testing.T) {
 	dir := t.TempDir()
 	claudeDir := filepath.Join(dir, ".claude")
 	os.MkdirAll(claudeDir, 0755)
@@ -16,26 +16,15 @@ func TestClaudeMountReadOnly(t *testing.T) {
 
 	found := false
 	for _, arg := range volArgs {
-		if strings.HasSuffix(arg, "/tmp/.claude:ro") {
+		if strings.HasSuffix(arg, "/tmp/.claude:rw") {
 			found = true
 		}
-		if strings.Contains(arg, ":/root/.claude") && !strings.Contains(arg, "/tmp/.claude") {
+		if strings.Contains(arg, ":/root/.claude") {
 			t.Errorf("found direct /root/.claude mount in args: %v", volArgs)
 		}
 	}
 	if !found {
-		t.Errorf("expected /tmp/.claude:ro mount, got %v", volArgs)
-	}
-}
-
-func TestClaudeMountDisabled(t *testing.T) {
-	// When ClaudeCode is disabled, buildClaudeMountArgs is never called.
-	// This test confirms the function is gated on config in the integration.
-	// The function itself always returns args — the caller gates on Enabled.
-	config := &GlobalConfig{}
-	config.AgentFrameworks.ClaudeCode.Enabled = false
-	if config.AgentFrameworks.ClaudeCode.Enabled {
-		t.Error("expected ClaudeCode to be disabled")
+		t.Errorf("expected /tmp/.claude:rw mount, got %v", volArgs)
 	}
 }
 
@@ -75,7 +64,20 @@ func TestDockerSetupBinarySkip(t *testing.T) {
 	}
 }
 
-func TestClaudeOutMountReadWrite(t *testing.T) {
+func TestClaudeSingleMount(t *testing.T) {
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	os.MkdirAll(claudeDir, 0755)
+
+	volArgs, _, _ := buildClaudeMountArgs(claudeDir, dir)
+
+	// Expect exactly one -v flag and one mount spec (two elements total).
+	if len(volArgs) != 2 {
+		t.Errorf("expected exactly one mount (-v <spec>), got %v", volArgs)
+	}
+}
+
+func TestClaudeMountContainsHostPath(t *testing.T) {
 	dir := t.TempDir()
 	claudeDir := filepath.Join(dir, ".claude")
 	os.MkdirAll(claudeDir, 0755)
@@ -84,36 +86,11 @@ func TestClaudeOutMountReadWrite(t *testing.T) {
 
 	found := false
 	for _, arg := range volArgs {
-		if strings.HasSuffix(arg, "/tmp/.claude-out:rw") {
+		if strings.HasPrefix(arg, claudeDir+":") {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("expected /tmp/.claude-out:rw mount in volArgs, got %v", volArgs)
-	}
-}
-
-func TestClaudeMountBothReadAndWrite(t *testing.T) {
-	dir := t.TempDir()
-	claudeDir := filepath.Join(dir, ".claude")
-	os.MkdirAll(claudeDir, 0755)
-
-	volArgs, _, _ := buildClaudeMountArgs(claudeDir, dir)
-
-	hasRO := false
-	hasRW := false
-	for _, arg := range volArgs {
-		if strings.HasSuffix(arg, "/tmp/.claude:ro") {
-			hasRO = true
-		}
-		if strings.HasSuffix(arg, "/tmp/.claude-out:rw") {
-			hasRW = true
-		}
-	}
-	if !hasRO {
-		t.Errorf("expected /tmp/.claude:ro mount in volArgs, got %v", volArgs)
-	}
-	if !hasRW {
-		t.Errorf("expected /tmp/.claude-out:rw mount in volArgs, got %v", volArgs)
+		t.Errorf("expected host claude path %q in mount spec, got %v", claudeDir, volArgs)
 	}
 }
