@@ -21,6 +21,9 @@ func buildClaudeMountArgs(hostClaudePath, hostHome string) (volumeArgs []string,
 	// Volume: read-only at /tmp/.claude
 	claudeTmpMount := fmt.Sprintf("%s:/tmp/.claude:ro", hostClaudePath)
 	volumeArgs = []string{"-v", claudeTmpMount}
+	// Volume: writable destination at /tmp/.claude-out for write-back sync
+	claudeOutMount := fmt.Sprintf("%s:/tmp/.claude-out:rw", hostClaudePath)
+	volumeArgs = append(volumeArgs, "-v", claudeOutMount)
 
 	// Env: HOST_HOME for sed substitution
 	envArgs = []string{"-e", fmt.Sprintf("HOST_HOME=%s", hostHome)}
@@ -530,6 +533,12 @@ func main() {
 						volumes = append(volumes, a)
 					}
 				}
+				// Inject SYNC_MODE from config, defaulting to additions_only
+				syncMode := globalConfig.AgentFrameworks.ClaudeCode.SyncMode
+				if syncMode == "" {
+					syncMode = "additions_only"
+				}
+				runArgs = append(runArgs, "-e", fmt.Sprintf("SYNC_MODE=%s", syncMode))
 				log.Info("mounting host ~/.claude read-only at /tmp/.claude for Claude Code")
 			}
 			hostClaudeJSON := filepath.Join(usr.HomeDir, ".claude.json")

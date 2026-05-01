@@ -89,8 +89,9 @@ type AgentFrameworksConfig struct {
 }
 
 type FrameworkConfig struct {
-	Enabled bool     `yaml:"enabled"`
-	Plugins []string `yaml:"plugins"`
+	Enabled  bool     `yaml:"enabled"`
+	Plugins  []string `yaml:"plugins"`
+	SyncMode string   `yaml:"sync_mode"` // "additions_only" (default) or "full"
 }
 
 func getGlobalConfigPath() (string, error) {
@@ -400,6 +401,8 @@ func frameworkNodes(name string, enabled bool) []*yaml.Node {
 			{Kind: yaml.ScalarNode, Tag: "!!bool", Value: enabledStr},
 			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "plugins"},
 			{Kind: yaml.SequenceNode, Tag: "!!seq"},
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "sync_mode"},
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "additions_only"},
 		}},
 	}
 }
