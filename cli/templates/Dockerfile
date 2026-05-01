@@ -404,11 +404,11 @@ fi
 INIT_CLAUDE
 RUN chmod +x /usr/local/bin/agentjail-init-claude
 
-# Exit sync script: syncs /root/.claude back to /tmp/.claude-out (host ~/.claude)
+# Exit sync script: syncs /root/.claude back to /tmp/.claude (host ~/.claude)
 # with reverse path translation on container exit. Called by EXIT trap in .zshrc.
 RUN cat > /usr/local/bin/agentjail-sync-claude <<'SYNC_CLAUDE'
 #!/bin/sh
-# Sync /root/.claude back to /tmp/.claude-out with reverse path translation.
+# Sync /root/.claude back to /tmp/.claude with reverse path translation.
 # Called by: trap 'agentjail-sync-claude' EXIT in .zshrc
 # Writes only changed files (content-based comparison). Binary files copied as-is.
 
@@ -423,39 +423,41 @@ if [ ! -d /root/.claude ]; then
     exit 0
 fi
 
-SYNC_MODE="${SYNC_MODE:-additions_only}"
+AGENTJAIL_SYNC_MODE="${AGENTJAIL_SYNC_MODE:-additions_only}"
 
-mkdir -p /tmp/.claude-out
+mkdir -p /tmp/.claude
 
 # Sync files: translate paths, compare content, write only if changed
 find /root/.claude -type f | while IFS= read -r file; do
     rel="${file#/root/.claude/}"
-    mkdir -p "$(dirname "/tmp/.claude-out/$rel")"
+    mkdir -p "$(dirname "/tmp/.claude/$rel")"
 
     if grep -qI "" "$file" 2>/dev/null; then
         # Text file: apply reverse path translation then compare
-        if [ -f "/tmp/.claude-out/$rel" ]; then
-            translated=$(sed "s|/root/.claude|${HOST_HOME}/.claude|g" "$file")
-            existing=$(cat "/tmp/.claude-out/$rel")
-            if [ "$translated" != "$existing" ]; then
-                sed "s|/root/.claude|${HOST_HOME}/.claude|g" "$file" > "/tmp/.claude-out/$rel.tmp" && \
-                    mv "/tmp/.claude-out/$rel.tmp" "/tmp/.claude-out/$rel"
+        if [ -f "/tmp/.claude/$rel" ]; then
+            sed "s|/root/.claude|${HOST_HOME}/.claude|g" "$file" > "/tmp/.claude/$rel.cmp"
+            if ! diff -q "/tmp/.claude/$rel.cmp" "/tmp/.claude/$rel" > /dev/null 2>&1; then
+                mv "/tmp/.claude/$rel.cmp" "/tmp/.claude/$rel"
+            else
+                rm -f "/tmp/.claude/$rel.cmp"
             fi
         else
-            sed "s|/root/.claude|${HOST_HOME}/.claude|g" "$file" > "/tmp/.claude-out/$rel"
+            # New file — write via tmp to guard against mid-stream interruption
+            sed "s|/root/.claude|${HOST_HOME}/.claude|g" "$file" > "/tmp/.claude/$rel.tmp" && \
+                mv "/tmp/.claude/$rel.tmp" "/tmp/.claude/$rel"
         fi
     else
         # Binary file: byte comparison, copy only if different
-        if [ ! -f "/tmp/.claude-out/$rel" ] || ! cmp -s "$file" "/tmp/.claude-out/$rel" 2>/dev/null; then
-            cp "$file" "/tmp/.claude-out/$rel"
+        if [ ! -f "/tmp/.claude/$rel" ] || ! cmp -s "$file" "/tmp/.claude/$rel" 2>/dev/null; then
+            cp "$file" "/tmp/.claude/$rel"
         fi
     fi
 done
 
 # Remove host files that were deleted inside container (full sync mode only)
-if [ "$SYNC_MODE" = "full" ]; then
-    find /tmp/.claude-out -type f | while IFS= read -r file; do
-        rel="${file#/tmp/.claude-out/}"
+if [ "$AGENTJAIL_SYNC_MODE" = "full" ]; then
+    find /tmp/.claude -type f | while IFS= read -r file; do
+        rel="${file#/tmp/.claude/}"
         if [ ! -f "/root/.claude/$rel" ]; then
             rm -f "$file"
         fi
@@ -464,7 +466,7 @@ fi
 
 # Restore host file ownership (chown failure must not block exit)
 if [ -n "${HOST_UID}" ] && [ -n "${HOST_GID}" ]; then
-    chown -R "${HOST_UID}:${HOST_GID}" /tmp/.claude-out 2>/dev/null || true
+    chown -R "${HOST_UID}:${HOST_GID}" /tmp/.claude 2>/dev/null || true
 fi
 
 exit 0
