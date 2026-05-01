@@ -13,23 +13,11 @@ import (
 	"golang.org/x/term"
 )
 
-// buildClaudeMountArgs returns the volume args, env args, and dockerSetup
-// snippet for mounting ~/.claude into the container with path translation.
-// hostClaudePath is the absolute path to ~/.claude on the host.
-// hostHome is the host user's home directory (e.g. "/home/jg").
-func buildClaudeMountArgs(hostClaudePath, hostHome string) (volumeArgs []string, envArgs []string, setupSnippet string) {
-	// Volume: read-only at /tmp/.claude
-	claudeTmpMount := fmt.Sprintf("%s:/tmp/.claude:ro", hostClaudePath)
-	volumeArgs = []string{"-v", claudeTmpMount}
-	// Volume: writable destination at /tmp/.claude-out for write-back sync
-	claudeOutMount := fmt.Sprintf("%s:/tmp/.claude-out:rw", hostClaudePath)
-	volumeArgs = append(volumeArgs, "-v", claudeOutMount)
-
-	// Env: HOST_HOME for sed substitution
-	envArgs = []string{"-e", fmt.Sprintf("HOST_HOME=%s", hostHome)}
-
-	// dockerSetup: copy + path translate, skip binaries via grep -qI
-	setupSnippet = `if [ -d /tmp/.claude ] && [ ! -d /root/.claude ]; then ` +
+// buildClaudeInitSnippet returns the dockerSetup shell snippet that initialises
+// /root/.claude from the read-write /tmp/.claude mount. It relies solely on
+// shell env vars injected at runtime (HOST_HOME) and has no Go-level parameters.
+func buildClaudeInitSnippet() string {
+	return `if [ -d /tmp/.claude ] && [ ! -d /root/.claude ]; then ` +
 		`cp -r /tmp/.claude /root/.claude && ` +
 		`find /root/.claude -type f | while IFS= read -r f; do ` +
 		`if grep -qI "" "$f" 2>/dev/null; then ` +
@@ -37,6 +25,25 @@ func buildClaudeMountArgs(hostClaudePath, hostHome string) (volumeArgs []string,
 		`fi; ` +
 		`done; ` +
 		`fi; `
+}
+
+// buildClaudeMountArgs returns the volume args, env args, and dockerSetup
+// snippet for mounting ~/.claude into the container with path translation.
+// hostClaudePath is the absolute path to ~/.claude on the host.
+// hostHome is the host user's home directory (e.g. "/home/jg").
+func buildClaudeMountArgs(hostClaudePath, hostHome string) (volumeArgs []string, envArgs []string, setupSnippet string) {
+	// Volume: single read-write mount at /tmp/.claude.
+	// The sync script reads from /root/.claude (container-local copy) and writes
+	// back to /tmp/.claude, which is the same host directory. One mount is
+	// sufficient; a separate :ro source + :rw output pointing to the same host
+	// path is contradictory and does not provide any safety benefit.
+	claudeTmpMount := fmt.Sprintf("%s:/tmp/.claude:rw", hostClaudePath)
+	volumeArgs = []string{"-v", claudeTmpMount}
+
+	// Env: HOST_HOME for sed substitution
+	envArgs = []string{"-e", fmt.Sprintf("HOST_HOME=%s", hostHome)}
+
+	setupSnippet = buildClaudeInitSnippet()
 
 	return
 }
@@ -538,7 +545,7 @@ func main() {
 				if syncMode == "" {
 					syncMode = "additions_only"
 				}
-				runArgs = append(runArgs, "-e", fmt.Sprintf("SYNC_MODE=%s", syncMode))
+				runArgs = append(runArgs, "-e", fmt.Sprintf("AGENTJAIL_SYNC_MODE=%s", syncMode))
 				log.Info("mounting host ~/.claude read-only at /tmp/.claude for Claude Code")
 			}
 			hostClaudeJSON := filepath.Join(usr.HomeDir, ".claude.json")
@@ -716,8 +723,7 @@ func main() {
 		dockerSetup += `[ -f /tmp/.gitconfig ] && cp /tmp/.gitconfig ~/.gitconfig 2>/dev/null; `
 	}
 	if globalConfig.AgentFrameworks.ClaudeCode.Enabled {
-		_, _, claudeSetup := buildClaudeMountArgs("", "")
-		dockerSetup += claudeSetup
+		dockerSetup += buildClaudeInitSnippet()
 	}
 
 	var niLockFile *os.File // held when we win the NI lock; released on exit/error
