@@ -13,7 +13,7 @@ This milestone makes the Claude Code integration first-class by solving three in
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Mount & Copy** - Mount `~/.claude` read-only at `/tmp/.claude` and copy it into the container with host-path translation on startup
-- [ ] **Phase 2: Write-back Sync** - Sync `/root/.claude` back to the host on container exit with reverse path translation and safe ownership handling
+- [x] **Phase 2: Write-back Sync** - Sync `/root/.claude` back to the host on container exit with reverse path translation and safe ownership handling
 - [ ] **Phase 3: Session Naming** - Auto-name Claude Code sessions `<project-folder>_<git-branch>` by detecting the branch at container start
 
 ## Phase Details
@@ -44,8 +44,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- Go CLI: /tmp/.claude-out:rw mount, SYNC_MODE env var injection, SyncMode config field, unit tests
-- [ ] 02-02-PLAN.md -- Container: agentjail-sync-claude script, zsh EXIT trap, config_schema.yaml docs
+- [x] 02-01-PLAN.md -- Go CLI: /tmp/.claude-out:rw mount, SYNC_MODE env var injection, SyncMode config field, unit tests
+- [x] 02-02-PLAN.md -- Container: agentjail-sync-claude script, zsh EXIT trap, config_schema.yaml docs
 
 ### Phase 3: Session Naming
 **Goal**: Claude Code sessions are named after the project and current git branch so the user can identify them immediately
@@ -54,8 +54,11 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Claude Code launches with a session name in `<project-folder>_<git-branch>` format
   2. When the project directory is not a git repo (or has no branch), the session name falls back to the project folder name alone
-**Plans**: TBD
-**UI hint**: no
+**Plans:** 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md -- Go CLI: detectGitBranch, sanitizeBranchName, buildSessionName functions; CLAUDE_SESSION_NAME env injection; .zshrc export; unit tests
+- [ ] 03-02-PLAN.md -- Human verification: confirm CLAUDE_SESSION_NAME is set correctly in a live container
 
 ## Progress
 
@@ -65,5 +68,5 @@ Phases execute in numeric order: 1 -> 2 -> 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Mount & Copy | 2/2 | Complete | 2026-04-26 |
-| 2. Write-back Sync | 0/2 | Not started | - |
-| 3. Session Naming | 0/TBD | Not started | - |
+| 2. Write-back Sync | 2/2 | Complete | 2026-05-01 |
+| 3. Session Naming | 0/2 | Not started | - |
