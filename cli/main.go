@@ -48,6 +48,49 @@ func buildClaudeMountArgs(hostClaudePath, hostHome string) (volumeArgs []string,
 	return
 }
 
+// detectGitBranch runs `git rev-parse --abbrev-ref HEAD` in projectDir and
+// returns the branch name. Returns "" if git is unavailable, the directory is
+// not a git repo, or the repo is in detached HEAD state.
+func detectGitBranch(projectDir string) string {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = projectDir
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch == "" || branch == "HEAD" {
+		return ""
+	}
+	return branch
+}
+
+// sanitizeBranchName replaces characters unsafe in shell contexts with hyphens.
+// Keeps alphanumeric, hyphens, and underscores; replaces everything else.
+func sanitizeBranchName(branch string) string {
+	var s strings.Builder
+	for _, r := range branch {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '-' || r == '_' {
+			s.WriteRune(r)
+		} else {
+			s.WriteRune('-')
+		}
+	}
+	return s.String()
+}
+
+// buildSessionName returns a Claude Code session name in the format
+// "<folder>_<branch>" or "<folder>" if no git branch is detected.
+func buildSessionName(absDir string) string {
+	folderName := filepath.Base(absDir)
+	branch := detectGitBranch(absDir)
+	if branch == "" {
+		return folderName
+	}
+	return folderName + "_" + sanitizeBranchName(branch)
+}
+
 // runWithTerminalRestore runs cmd and restores the terminal state and console
 // code pages (on Windows) after it exits, regardless of success or failure.
 func runWithTerminalRestore(cmd *exec.Cmd) error {
@@ -441,6 +484,7 @@ func main() {
 		"-e", fmt.Sprintf("CONTAINER_ID=%s", containerName),
 		"-e", fmt.Sprintf("HISTFILE=/root/.agentjail/%s_history", *shellPtr),
 		"-e", fmt.Sprintf("AGENTJAIL_HOST_PATH=%s", absDir),
+		"-e", fmt.Sprintf("CLAUDE_SESSION_NAME=%s", buildSessionName(absDir)),
 	)
 
 	// Inject host UID/GID so the container can restore file ownership on exit.

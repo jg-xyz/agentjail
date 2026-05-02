@@ -101,6 +101,14 @@ PROMPT='$('/usr/local/bin/starship' prompt --terminal-width="$COLUMNS" --keymap=
 RPROMPT='$('/usr/local/bin/starship' prompt --right --terminal-width="$COLUMNS" --keymap="${KEYMAP:-}" --status="${STARSHIP_CMD_STATUS:-}" --pipestatus="${STARSHIP_PIPE_STATUS[*]:-}" --cmd-duration="${STARSHIP_DURATION:-}" --jobs="$STARSHIP_JOBS_COUNT")'
 PROMPT2="$(/usr/local/bin/starship prompt --continuation)"
 
+# Session naming: read CLAUDE_SESSION_NAME injected by Go CLI via docker run -e.
+# Export it so subprocesses (claude agent) inherit it.
+if [ -n "$CLAUDE_SESSION_NAME" ]; then
+	export CLAUDE_SESSION_NAME
+	# Set terminal title to show session context in tab/window title bar.
+	echo -ne "\033]0;${CLAUDE_SESSION_NAME}\007"
+fi
+
 # On container exit, sync /root/.claude back to host ~/.claude.
 # EXIT trap fires on normal exit, Ctrl-C (SIGINT), and docker stop (SIGTERM).
 # Uses EXIT only (no INT/TERM traps) to avoid zsh trap interaction issues.
