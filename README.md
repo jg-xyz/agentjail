@@ -282,7 +282,9 @@ Auth is persisted by mounting `~/.config/opencode` from the host. A project-leve
 
 ### Claude Code
 
-Requires an Anthropic API key. Auth and settings are persisted by mounting `~/.claude` and `~/.claude.json` from the host.
+Auth and settings are persisted by mounting `~/.claude.json` from the host. The `~/.claude` directory (skills, plugins, settings) is mounted read-only and copied into the container at startup with host paths translated so hooks and plugins resolve correctly inside the container. Changes made inside the container (new memories, edited settings) are written to the container's `/root/.claude` and do not modify the host directory.
+
+If you have an Anthropic API key you can pass it via config or env var. If you are already authenticated via the browser OAuth flow (credentials stored in `~/.claude`), no API key is needed.
 
 Enable in config:
 
@@ -343,6 +345,7 @@ agentjail -b
 - `.agentjail/` is automatically added to `.gitignore`
 - Container name is derived from the project directory name (`agentjail.<prefix>`)
 - Running `agentjail` with no args re-enters an existing container for the current directory
+- `~/.claude` (when Claude is enabled) → mounted read-only at `/tmp/.claude`; copied to `/root/.claude` on startup with host paths translated to container paths. The host directory is never written by the container.
 
 ### Privileged mode (`-P`)
 

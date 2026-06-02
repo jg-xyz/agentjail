@@ -449,7 +449,7 @@ func main() {
 		}
 		zellijAgentCmd := ""
 		if zellijAgentName != "" {
-			zellijAgentCmd = agentCommand(zellijAgentName, claudeExtraContext)
+			zellijAgentCmd = agentCommandWithConfig(zellijAgentName, claudeExtraContext, globalConfig)
 		}
 		if err := writeZellijFiles(agentJailDir, globalConfig.ZellijThemeOrDefault(), zellijAgentName, zellijAgentCmd, globalConfig.FileBrowserCmd(), *shellPtr, globalConfig.ZellijPlugins); err != nil {
 			log.Warnf("could not write zellij layout: %v", err)
@@ -637,9 +637,26 @@ func main() {
 		runArgs = append(runArgs, "-v", "/var/run/docker.sock:/var/run/docker.sock")
 	}
 
-	// Handle -n (Network)
-	if *networkPtr != "" {
-		runArgs = append(runArgs, "--network", *networkPtr)
+	// Resolve network: -n flag > config docker_network > AGENTJAIL_NETWORK env (applied
+	// via applyEnvOverrides already) > default to container name.
+	resolvedNetwork := *networkPtr
+	if resolvedNetwork == "" {
+		resolvedNetwork = globalConfig.DockerNetwork
+	}
+	if resolvedNetwork == "" {
+		resolvedNetwork = containerName
+	}
+	// Ensure the network exists before passing it to docker run.
+	if out, err := exec.Command("docker", "network", "inspect", resolvedNetwork).Output(); err != nil || len(out) == 0 {
+		if createErr := exec.Command("docker", "network", "create", resolvedNetwork).Run(); createErr != nil {
+			log.Warnf("could not create docker network %q: %v", resolvedNetwork, createErr)
+			resolvedNetwork = ""
+		} else {
+			log.Infof("created docker network %q", resolvedNetwork)
+		}
+	}
+	if resolvedNetwork != "" {
+		runArgs = append(runArgs, "--network", resolvedNetwork)
 	}
 
 	// Handle -E (Editor Config)
@@ -735,10 +752,10 @@ func main() {
 		}
 	}
 
-	// Create and save metadata
+	// Create and save metadata — resolvedNetwork was set above.
 	metadata := &AgentJailMetadata{
 		ContainerName:    containerName,
-		Network:          *networkPtr,
+		Network:          resolvedNetwork,
 		Volumes:          volumes,
 		EnvironmentVars:  envVars,
 		ImageVersion:     imageName,
@@ -860,7 +877,7 @@ func main() {
 				agent = chooseEnabledAgent(globalConfig)
 			}
 			if agent != "" {
-				cmd := agentCommand(agent, claudeExtraContext)
+				cmd := agentCommandWithConfig(agent, claudeExtraContext, globalConfig)
 				initCmd := fmt.Sprintf("/usr/local/bin/agentjail-install-browser || true; %smise trust --yes /project && mise install; %s; exec %s", dockerSetup, cmd, shell)
 				runArgs = append(runArgs, shell, "-i", "-c", initCmd)
 				log.Infof("auto-starting agent: %s", agent)

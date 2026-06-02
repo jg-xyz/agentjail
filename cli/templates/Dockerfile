@@ -1,7 +1,7 @@
 FROM ubuntu:24.04 as base
 
-ARG SHELL="bash"
-ARG EDITOR="micro"
+ARG SHELL="zsh"
+ARG EDITOR="fresh"
 ARG FILE_BROWSER="rovr"
 ARG USE_COPILOT="false"
 ARG USE_OPENCODE="false"
@@ -17,6 +17,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
+    docker-cli \
     gh \
     git \
     jq \

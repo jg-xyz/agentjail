@@ -1,7 +1,4 @@
 [tools]
-bat = "latest"
-claude = "latest" #"2.0.28"
-gh = "latest"
 go = "1.25.3"
 
 [settings]

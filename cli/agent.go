@@ -41,6 +41,13 @@ func resolveClaudeContext(configVal, flagVal string) string {
 // agentCommand returns the shell command string to launch the given agent.
 // extraContext is appended to Claude Code's system prompt when non-empty.
 func agentCommand(name, extraContext string) string {
+	return agentCommandWithConfig(name, extraContext, nil)
+}
+
+// agentCommandWithConfig is like agentCommand but accepts the full config so
+// agent-specific options (e.g. dangerously_skip_permissions for claude) can be
+// applied.
+func agentCommandWithConfig(name, extraContext string, config *GlobalConfig) string {
 	switch name {
 	case "opencode":
 		return "opencode"
@@ -50,6 +57,10 @@ func agentCommand(name, extraContext string) string {
 		prompt := claudeSystemPrompt
 		if extraContext != "" {
 			prompt += "\n\n" + extraContext
+		}
+		dangerouslySkip := config != nil && config.AgentFrameworks.ClaudeCode.DangerouslySkipPermissions
+		if dangerouslySkip {
+			return "claude-yolo --append-system-prompt " + shellEscape(prompt)
 		}
 		return "claude --append-system-prompt " + shellEscape(prompt)
 	default:

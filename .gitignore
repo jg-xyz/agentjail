@@ -8,3 +8,6 @@ cli/agentjail-cli
 opencode.json
 test_project/
 opencode_config.json
+.planning/
+.worktrees/
+docs/

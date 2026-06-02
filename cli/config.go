@@ -29,6 +29,7 @@ type GlobalConfig struct {
 	ContainerEnvVars          map[string]string     `yaml:"container_env_vars"`
 	PortMappings              []string              `yaml:"port_mappings"`
 	ClaudeAppendSystemPrompt  string                `yaml:"claude_append_system_prompt"`
+	DockerNetwork             string                `yaml:"docker_network"`
 }
 
 // applyEnvOverrides applies AGENTJAIL_* environment variable overrides to the
@@ -45,6 +46,9 @@ func (c *GlobalConfig) applyEnvOverrides() {
 	} else if v := os.Getenv("AGENTJAIL_FILEMANAGER"); v != "" {
 		// Backwards-compatible alias for AGENTJAIL_FILE_BROWSER.
 		c.FileBrowser = v
+	}
+	if v := os.Getenv("AGENTJAIL_NETWORK"); v != "" {
+		c.DockerNetwork = v
 	}
 }
 
@@ -89,9 +93,10 @@ type AgentFrameworksConfig struct {
 }
 
 type FrameworkConfig struct {
-	Enabled  bool     `yaml:"enabled"`
-	Plugins  []string `yaml:"plugins"`
-	SyncMode string   `yaml:"sync_mode"` // "additions_only" (default) or "full"
+	Enabled                    bool     `yaml:"enabled"`
+	Plugins                    []string `yaml:"plugins"`
+	SyncMode                   string   `yaml:"sync_mode"` // "additions_only" (default) or "full"
+	DangerouslySkipPermissions bool     `yaml:"dangerously_skip_permissions"`
 }
 
 func getGlobalConfigPath() (string, error) {
@@ -310,6 +315,9 @@ func runConfigUpdateFromPath(configPath string) error {
 	if !topKeys["claude_append_system_prompt"] {
 		addKV("claude_append_system_prompt", scalar("!!str", ""), "claude_append_system_prompt: \"\"")
 	}
+	if !topKeys["docker_network"] {
+		addKV("docker_network", scalar("!!str", ""), "docker_network: \"\"")
+	}
 
 	// agent_frameworks: add the whole block if missing, or fill in missing sub-frameworks.
 	frameworks := []struct {
@@ -403,6 +411,8 @@ func frameworkNodes(name string, enabled bool) []*yaml.Node {
 			{Kind: yaml.SequenceNode, Tag: "!!seq"},
 			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "sync_mode"},
 			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "additions_only"},
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "dangerously_skip_permissions"},
+			{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "false"},
 		}},
 	}
 }
@@ -471,6 +481,12 @@ anthropic_api_key: ""
 # flag is also provided.
 claude_append_system_prompt: ""
 
+# Docker network to connect the container to.
+# Precedence: -n flag > this setting > AGENTJAIL_NETWORK env var > container name (default).
+# When unset the container gets its own dedicated network named after the container.
+# Override per-invocation with: AGENTJAIL_NETWORK=mynet agentjail
+docker_network: ""
+
 # Agent framework settings
 agent_frameworks:
   opencode:
@@ -482,6 +498,9 @@ agent_frameworks:
   claude:
     enabled: false
     plugins: []
+    # When true, claude is launched as claude-yolo (claude --dangerously-skip-permissions).
+    # Use with caution: the agent can execute any command without confirmation.
+    dangerously_skip_permissions: false
 
 # Environment variables to inject into the container.
 # Supports two schemas:
